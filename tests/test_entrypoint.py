@@ -59,9 +59,11 @@ class Harness:
         return [line for line in self.log.read_text().splitlines() if line.startswith("start")]
 
     def start(self):
-        self.proc = subprocess.Popen(["bash", str(ENTRYPOINT)], env=self.env,
+        # Own session so cleanup can kill the fake server child as well.
+        self.proc = subprocess.Popen(["bash", str(ENTRYPOINT)], env=self.env, start_new_session=True,
                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        self.wait_for(lambda: len(self.starts()) >= 1)
+        before = len(self.starts())
+        self.wait_for(lambda: len(self.starts()) > before)
 
     def wait_for(self, condition, timeout=10.0):
         deadline = time.monotonic() + timeout
@@ -89,8 +91,11 @@ def harness(tmp_path):
 
     yield make
     for h in harnesses:
-        if h.proc and h.proc.poll() is None:
-            h.proc.kill()
+        if h.proc:
+            try:
+                os.killpg(h.proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
 
 
 def rotation_lines(game_ini: str) -> list[str]:
@@ -153,6 +158,60 @@ def test_apply_env_on_start_still_uses_panel_rotation(harness):
 def test_server_crash_exits_container(harness):
     h = harness()
     h.start()
-    pid = int(subprocess.check_output(["pgrep", "-f", "MordhauServer-Linux-Shipping Mordhau"], text=True).split()[0])
+    pid = int(subprocess.check_output(["pgrep", "-P", str(h.proc.pid), "-f", "MordhauServer-Linux-Shipping"],
+                                      text=True).split()[0])
     os.kill(pid, signal.SIGKILL)
     assert h.proc.wait(timeout=10) == 137
+
+
+def test_first_run_writes_all_sections(harness):
+    h = harness(SERVER_NAME="Pisshau", MAX_PLAYERS="8", RCON_PASSWORD="r", MAP_ROTATION="FFA_Camp")
+    h.start()
+    assert h.game_ini == (
+        "[/Script/Mordhau.MordhauGameSession]\n"
+        "ServerName=Pisshau\nbAdvertiseServerViaSteam=False\nbUseOfficialBanList=True\n"
+        "bUseOfficialMuteList=True\nServerPassword=\nAdminPassword=\nMaxSlots=8\n"
+        "RconPassword=r\nRconPort=37001\n"
+        "\n[/Script/Engine.GameSession]\nMaxPlayers=8\n"
+        "\n[/Script/Mordhau.MordhauGameMode]\nMapRotation=FFA_Camp\n"
+    )
+    h.stop()
+
+
+def test_apply_env_keeps_admins_bans_and_mutes(harness):
+    h = harness(APPLY_ENV_ON_START="true", SERVER_NAME="Old", RCON_PASSWORD="r")
+    h.start()
+    # What the game writes after RCON addadmin/ban/mute.
+    with open(h.data / "config" / "Game.ini", "a") as ini:
+        ini.write("Admins=10074AF86EBCB9A2\n"
+                  "BannedPlayers=(BannedPlayerId=AAAA,BanDuration=0,BanReason=\"x\")\n"
+                  "MutedPlayers=(MutedPlayerId=BBBB,MuteDuration=60)\n")
+    h.env.update(SERVER_NAME="New", RCON_PASSWORD="")
+    (h.data / "panel" / "restart-request").touch()
+    h.wait_for(lambda: len(h.starts()) == 2)
+
+    ini = h.game_ini
+    assert "Admins=10074AF86EBCB9A2" in ini
+    assert "BannedPlayers=(BannedPlayerId=AAAA" in ini
+    assert "MutedPlayers=(MutedPlayerId=BBBB" in ini
+    assert ini.count("ServerName=") == 1
+    # The env change only reaches the running loop on container restart, so the
+    # name is unchanged here; RconPassword must not be duplicated either way.
+    assert ini.count("RconPassword=") == 1
+    h.stop()
+
+
+def test_apply_env_updates_values_on_container_restart(harness):
+    h = harness(APPLY_ENV_ON_START="true", SERVER_NAME="Old", RCON_PASSWORD="r")
+    h.start()
+    with open(h.data / "config" / "Game.ini", "a") as ini:
+        ini.write("Admins=10074AF86EBCB9A2\n")
+    h.stop()
+
+    h.env.update(SERVER_NAME="New", RCON_PASSWORD="")
+    h.start()
+    ini = h.game_ini
+    assert "ServerName=New" in ini and "ServerName=Old" not in ini
+    assert "RconPassword" not in ini and "RconPort" not in ini
+    assert "Admins=10074AF86EBCB9A2" in ini
+    h.stop()

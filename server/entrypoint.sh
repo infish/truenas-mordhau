@@ -94,21 +94,38 @@ load_map_settings() {
   fi
 }
 
-# Replaces every MapRotation line in Game.ini with the effective rotation,
-# keeping the rest of the file (including hand edits) intact.
-apply_rotation() {
-  local game_ini="$1"
-  local tmp="${game_ini}.tmp"
-  ROTATION_LINES="$(printf 'MapRotation=%s\n' "${effective_rotation[@]}")" \
+# Replaces the given keys inside one INI section with new lines, keeping every
+# other line intact: hand edits, and the Admins/BannedPlayers/MutedPlayers
+# entries the game itself writes when RCON adds admins, bans or mutes.
+# Usage: replace_ini_keys <file> <section> "<Key1 Key2 ...>" "<new lines>"
+replace_ini_keys() {
+  local ini="$1"
+  local tmp="${ini}.tmp"
+  [[ -f "$ini" ]] || : > "$ini"
+  INI_SECTION="$2" INI_KEYS="$3" INI_LINES="$4" \
     awk '
-      BEGIN { section = "[/Script/Mordhau.MordhauGameMode]"; rot = ENVIRON["ROTATION_LINES"] }
+      BEGIN {
+        section = ENVIRON["INI_SECTION"]
+        block = ENVIRON["INI_LINES"]
+        n = split(ENVIRON["INI_KEYS"], keys, " ")
+        for (i = 1; i <= n; i++) managed[keys[i]] = 1
+      }
       { line = $0; sub(/\r$/, "", line) }
-      line ~ /^MapRotation=/ { next }
+      line ~ /^\[/ { in_section = (line == section) }
+      in_section && line !~ /^\[/ {
+        key = line; sub(/=.*/, "", key); sub(/^[+-]/, "", key)
+        if (key in managed) next
+      }
       { print }
-      line == section && !found { print rot; found = 1 }
-      END { if (!found) { print ""; print section; print rot } }
-    ' "$game_ini" > "$tmp"
-  mv "$tmp" "$game_ini"
+      line == section && !done { if (block != "") print block; done = 1 }
+      END { if (!done && block != "") { if (NR > 0) print ""; print section; print block } }
+    ' "$ini" > "$tmp"
+  mv "$tmp" "$ini"
+}
+
+apply_rotation() {
+  replace_ini_keys "$1" "[/Script/Mordhau.MordhauGameMode]" "MapRotation" \
+    "$(printf 'MapRotation=%s\n' "${effective_rotation[@]}")"
 }
 
 write_effective_settings() {
@@ -129,8 +146,8 @@ write_configs() {
   local advertise
   advertise="$(ini_bool "${ADVERTISE_SERVER:-false}")"
 
-  cat > "$game_ini" <<EOF
-[/Script/Mordhau.MordhauGameSession]
+  local session_lines
+  session_lines="$(cat <<EOF
 ServerName=${SERVER_NAME:-Home Mordhau}
 bAdvertiseServerViaSteam=${advertise}
 bUseOfficialBanList=True
@@ -139,22 +156,17 @@ ServerPassword=${SERVER_PASSWORD:-}
 AdminPassword=${ADMIN_PASSWORD:-}
 MaxSlots=${MAX_PLAYERS:-16}
 EOF
-
+)"
   if [[ -n "${RCON_PASSWORD:-}" ]]; then
-    cat >> "$game_ini" <<EOF
-RconPassword=${RCON_PASSWORD}
-RconPort=${RCON_PORT:-37001}
-EOF
+    session_lines+=$'\n'"RconPassword=${RCON_PASSWORD}"$'\n'"RconPort=${RCON_PORT:-37001}"
   fi
 
-  cat >> "$game_ini" <<EOF
-
-[/Script/Engine.GameSession]
-MaxPlayers=${MAX_PLAYERS:-16}
-
-[/Script/Mordhau.MordhauGameMode]
-EOF
-  printf 'MapRotation=%s\n' "${effective_rotation[@]}" >> "$game_ini"
+  # Update only the keys this script owns; anything else in Game.ini stays.
+  replace_ini_keys "$game_ini" "[/Script/Mordhau.MordhauGameSession]" \
+    "ServerName bAdvertiseServerViaSteam bUseOfficialBanList bUseOfficialMuteList ServerPassword AdminPassword MaxSlots RconPassword RconPort" \
+    "$session_lines"
+  replace_ini_keys "$game_ini" "[/Script/Engine.GameSession]" "MaxPlayers" "MaxPlayers=${MAX_PLAYERS:-16}"
+  apply_rotation "$game_ini"
 
   cat > "$engine_ini" <<EOF
 [/Script/OnlineSubsystemUtils.IpNetDriver]
