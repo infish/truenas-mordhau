@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mordhau Panel</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="login">
+    <form id="login-form" class="card">
+      <h1>Mordhau Panel</h1>
+      <input type="text" name="username" value="admin" autocomplete="username" hidden>
+      <label class="field">
+        <span>Panel password</span>
+        <input id="password" type="password" name="password" autocomplete="current-password" required autofocus>
+      </label>
+      <p id="login-error" class="login-error" role="alert" hidden></p>
+      <div class="actions">
+        <button class="primary">Log in</button>
+      </div>
+    </form>
+  </main>
+  <script src="/static/login.js"></script>
+</body>
+</html>

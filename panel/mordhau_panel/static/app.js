@@ -28,6 +28,11 @@ async function api(method, path, body) {
   }
   // location.origin drops any user:pass@ from the address bar, which fetch rejects.
   const response = await fetch(new URL(path, location.origin), options);
+  if (response.status === 401) {
+    // Session expired: reloading shows the login page.
+    location.reload();
+    throw new Error("Not logged in");
+  }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const detail = typeof data.detail === "string" ? data.detail : `Request failed (${response.status})`;
@@ -301,6 +306,10 @@ async function sendCommand(command) {
 // ---- Wiring --------------------------------------------------------------
 
 $("change-btn").addEventListener("click", changeMap);
+$("logout-btn").addEventListener("click", async () => {
+  await fetch(new URL("/logout", location.origin), { method: "POST", headers: { "X-Panel-Request": "1" } });
+  location.reload();
+});
 $("custom-map").addEventListener("input", () => {
   state.selectedMap = null;
   renderMapGrid();

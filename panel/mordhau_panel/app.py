@@ -2,24 +2,27 @@
 
 import os
 import secrets
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .a2s import QueryError, query_info
+from .auth import COOKIE_NAME, SESSION_SECONDS, SessionSigner
 from .maps import MapCatalog
 from .rcon import RconAuthError, RconClient, RconError
 from .settings import SettingsError, SettingsStore, validate_map
 
 STATIC_DIR = Path(__file__).parent / "static"
 # Browsers cannot attach custom headers to cross-site form posts, so requiring
-# one on writes blocks CSRF against the cached Basic auth credentials.
+# one on writes blocks CSRF (on top of the SameSite session cookie).
 CSRF_HEADER = "x-panel-request"
+FAILED_LOGIN_DELAY = 1.0
 
 
 @dataclass
@@ -65,20 +68,36 @@ class ConsoleRequest(BaseModel):
     command: str
 
 
+class LoginRequest(BaseModel):
+    password: str
+
+
 def create_app(config: Config) -> FastAPI:
     rcon = config.rcon or RconClient(config.rcon_host, config.rcon_port, config.rcon_password)
     catalog = MapCatalog(config.data_dir / "server" / "Mordhau" / "Content" / "Paks")
     store = SettingsStore(config.data_dir / "panel")
-    basic = HTTPBasic(realm="Mordhau panel")
+    signer = SessionSigner(config.panel_password)
+    # auto_error=False: no WWW-Authenticate challenge, so browsers show the
+    # login page instead of a native popup. Basic auth still works for scripts.
+    basic = HTTPBasic(auto_error=False)
 
-    def require_auth(credentials: HTTPBasicCredentials = Depends(basic)) -> None:
+    def password_ok(password: str) -> bool:
+        return secrets.compare_digest(password.encode(), config.panel_password.encode())
+
+    def authenticated(request: Request, credentials: HTTPBasicCredentials | None) -> bool:
+        if signer.valid(request.cookies.get(COOKIE_NAME)):
+            return True
+        if credentials is None:
+            return False
         user_ok = secrets.compare_digest(credentials.username.encode(), config.panel_username.encode())
-        password_ok = secrets.compare_digest(credentials.password.encode(), config.panel_password.encode())
-        if not (user_ok and password_ok):
-            raise HTTPException(401, "Wrong username or password", headers={"WWW-Authenticate": "Basic"})
+        return user_ok and password_ok(credentials.password)
 
-    app = FastAPI(title="Mordhau panel", docs_url=None, redoc_url=None, openapi_url=None,
-                  dependencies=[Depends(require_auth)])
+    def require_auth(request: Request, credentials: HTTPBasicCredentials | None = Depends(basic)) -> None:
+        if not authenticated(request, credentials):
+            raise HTTPException(401, "Not logged in")
+
+    app = FastAPI(title="Mordhau panel", docs_url=None, redoc_url=None, openapi_url=None)
+    api = APIRouter(prefix="/api", dependencies=[Depends(require_auth)])
 
     @app.middleware("http")
     async def csrf_guard(request: Request, call_next):
@@ -98,10 +117,25 @@ def create_app(config: Config) -> FastAPI:
             raise HTTPException(502, str(exc)) from exc
 
     @app.get("/")
-    def index():
-        return FileResponse(STATIC_DIR / "index.html")
+    def index(request: Request, credentials: HTTPBasicCredentials | None = Depends(basic)):
+        page = "index.html" if authenticated(request, credentials) else "login.html"
+        return FileResponse(STATIC_DIR / page)
 
-    @app.get("/api/status")
+    @app.post("/login")
+    def login(body: LoginRequest, response: Response):
+        if not password_ok(body.password):
+            time.sleep(FAILED_LOGIN_DELAY)
+            raise HTTPException(401, "Wrong password")
+        response.set_cookie(COOKIE_NAME, signer.issue(), max_age=SESSION_SECONDS,
+                            httponly=True, samesite="strict")
+        return {"ok": True}
+
+    @app.post("/logout")
+    def logout(response: Response):
+        response.delete_cookie(COOKIE_NAME, httponly=True, samesite="strict")
+        return {"ok": True}
+
+    @api.get("/status")
     def status():
         try:
             server = {"online": True, **query_info(config.query_host, config.query_port)}
@@ -113,12 +147,12 @@ def create_app(config: Config) -> FastAPI:
             "settings": store.state(),
         }
 
-    @app.get("/api/maps")
+    @api.get("/maps")
     def maps(refresh: bool = False):
         modes = catalog.modes(refresh=refresh)
         return {"modes": modes, "paks_dir": str(catalog.paks_dir), "errors": catalog.errors}
 
-    @app.post("/api/changelevel")
+    @api.post("/changelevel")
     def changelevel(body: ChangeLevelRequest):
         try:
             map_name = validate_map(body.map)
@@ -126,7 +160,7 @@ def create_app(config: Config) -> FastAPI:
             raise HTTPException(400, str(exc)) from exc
         return {"output": run_rcon(f"changelevel {map_name}")}
 
-    @app.put("/api/settings")
+    @api.put("/settings")
     def save_settings(body: SettingsRequest):
         try:
             store.save(body.default_map, body.rotation)
@@ -136,23 +170,24 @@ def create_app(config: Config) -> FastAPI:
             store.request_restart()
         return store.state()
 
-    @app.delete("/api/settings")
+    @api.delete("/settings")
     def clear_settings():
         store.clear()
         return store.state()
 
-    @app.post("/api/restart")
+    @api.post("/restart")
     def restart():
         store.request_restart()
         return store.state()
 
-    @app.post("/api/console")
+    @api.post("/console")
     def console(body: ConsoleRequest):
         command = body.command.strip()
         if not command or "\n" in command or "\r" in command:
             raise HTTPException(400, "Enter a single-line command")
         return {"output": run_rcon(command)}
 
+    app.include_router(api)
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     return app
 

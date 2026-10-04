@@ -51,10 +51,48 @@ def client(data_dir, rcon_server):
 
 
 def test_requires_auth(client):
-    assert TestClient(client.app).get("/").status_code == 401
+    anonymous = TestClient(client.app)
+    page = anonymous.get("/")
+    assert page.status_code == 200 and 'id="login-form"' in page.text
+    status = anonymous.get("/api/status")
+    assert status.status_code == 401
+    assert "www-authenticate" not in status.headers  # no native browser popup
     assert client.get("/api/status", headers=basic("admin", "nope")).status_code == 401
     assert client.get("/api/status", headers=basic("root", "panel-pass")).status_code == 401
-    assert client.get("/").status_code == 200
+    assert 'id="map-grid"' in client.get("/").text
+
+
+def test_login_logout_with_session_cookie(client, monkeypatch):
+    monkeypatch.setattr("mordhau_panel.app.FAILED_LOGIN_DELAY", 0)
+    browser = TestClient(client.app)
+    assert browser.post("/login", json={"password": "wrong"}, headers=WRITE).status_code == 401
+    assert browser.get("/api/status").status_code == 401
+
+    response = browser.post("/login", json={"password": "panel-pass"}, headers=WRITE)
+    assert response.status_code == 200
+    cookie = response.headers["set-cookie"]
+    assert "HttpOnly" in cookie and "SameSite=strict" in cookie
+    assert browser.get("/api/status").status_code == 200
+    assert 'id="map-grid"' in browser.get("/").text
+
+    browser.post("/logout", headers=WRITE)
+    assert browser.get("/api/status").status_code == 401
+
+
+def test_login_requires_panel_header(client):
+    assert TestClient(client.app).post("/login", json={"password": "panel-pass"}).status_code == 403
+
+
+def test_forged_or_expired_session_rejected(client):
+    from mordhau_panel.auth import COOKIE_NAME, SessionSigner
+
+    browser = TestClient(client.app)
+    browser.cookies.set(COOKIE_NAME, "9999999999.forged")
+    assert browser.get("/api/status").status_code == 401
+    browser.cookies.set(COOKIE_NAME, SessionSigner("panel-pass").issue(now=0))
+    assert browser.get("/api/status").status_code == 401
+    browser.cookies.set(COOKIE_NAME, SessionSigner("other-password").issue())
+    assert browser.get("/api/status").status_code == 401
 
 
 def test_writes_require_panel_header(client, rcon_server):
