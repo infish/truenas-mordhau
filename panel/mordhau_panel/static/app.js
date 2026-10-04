@@ -49,6 +49,17 @@ function shortName(map) {
   return map.includes("_") ? map.slice(map.indexOf("_") + 1) : map;
 }
 
+// Steam query reports the display name ("The Pit"), not the level name, so
+// compare letters only against the part after the mode prefix.
+function looseName(name) {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function isLiveMap(map) {
+  if (!state.liveMap) return false;
+  return map === state.liveMap || looseName(shortName(map)) === looseName(state.liveMap);
+}
+
 function allMaps() {
   return state.modes.flatMap((mode) => mode.maps);
 }
@@ -159,7 +170,7 @@ function renderMapGrid() {
   grid.replaceChildren(...mode.maps.map((map) => {
     const button = el("button", { textContent: shortName(map), title: map });
     button.setAttribute("aria-pressed", String(map === state.selectedMap));
-    if (map === state.liveMap) button.classList.add("current");
+    if (isLiveMap(map)) button.classList.add("current");
     button.addEventListener("click", () => {
       state.selectedMap = map;
       $("custom-map").value = "";
