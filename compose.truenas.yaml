@@ -1,0 +1,69 @@
+name: mordhau
+
+services:
+  server:
+    image: docker.io/infish1997/mordhau-server:latest
+    container_name: mordhau
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Prague
+
+      # Steam/install behavior.
+      UPDATE_ON_START: "true"
+      STEAM_VALIDATE: "false"
+      STEAM_BRANCH: ""
+
+      # These are applied when config/Game.ini and config/Engine.ini are first
+      # created. Set APPLY_ENV_ON_START to "true" for one redeploy if you want
+      # compose values to overwrite config files again.
+      APPLY_ENV_ON_START: "false"
+      SERVER_NAME: "Home Mordhau"
+      SERVER_PASSWORD: ""
+      ADMIN_PASSWORD: "CHANGE_ME_LONG_RANDOM_PASSWORD"
+      RCON_PASSWORD: ""
+      MAX_PLAYERS: "16"
+      ADVERTISE_SERVER: "false"
+      DEFAULT_MAP: "FFA_ThePit"
+      MAP_ROTATION_1: "FFA_ThePit"
+      MAP_ROTATION_2: "FFA_Camp"
+      MAP_ROTATION_3: "TDM_Camp"
+
+      # Mordhau ports.
+      GAME_PORT: "37000"
+      BEACON_PORT: "37002"
+      QUERY_PORT: "37003"
+      RCON_PORT: "37001"
+
+    volumes:
+      - type: bind
+        source: /mnt/Apps/MordhauServer
+        target: /data
+
+    ports:
+      - target: 37000
+        published: 37000
+        protocol: tcp
+      - target: 37000
+        published: 37000
+        protocol: udp
+      - target: 37001
+        published: 37001
+        protocol: tcp
+      - target: 37001
+        published: 37001
+        protocol: udp
+      - target: 37002
+        published: 37002
+        protocol: tcp
+      - target: 37002
+        published: 37002
+        protocol: udp
+      - target: 37003
+        published: 37003
+        protocol: tcp
+      - target: 37003
+        published: 37003
+        protocol: udp
+
+    security_opt:
+      - no-new-privileges:true
