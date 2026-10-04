@@ -28,7 +28,18 @@ finds in the installed server's `.pak` files, grouped by prefix.
   supervisor to restart the game process right away (no SteamCMD update, about
   a minute of downtime). Saved settings override `DEFAULT_MAP` and
   `MAP_ROTATION` from the app config.
+- **Players** lists who is online (refreshed every 5 seconds) with per-player
+  actions: make/remove admin, move team, kill, mute, kick, ban, rename. Also
+  add/remove bots, message everyone, extend the match, and the ban and mute
+  lists with unban/unmute. Players are targeted by PlayFab ID, never by name.
+  Ban and mute durations are in minutes; "Permanent" sends 0. Reasons are sent
+  as one word (spaces become underscores) because `ban` reads the duration
+  after the reason.
 - **Console** sends any RCON command, e.g. `help` or `playerlist`.
+
+Admins, bans and mutes added over RCON are saved by the game in `Game.ini`.
+The entrypoint only rewrites the keys it manages there, so they survive
+restarts even with `APPLY_ENV_ON_START: "true"`.
 
 ## Setup
 

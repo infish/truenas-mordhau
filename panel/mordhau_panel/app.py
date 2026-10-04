@@ -14,6 +14,16 @@ from pydantic import BaseModel
 
 from .a2s import QueryError, query_info
 from .auth import COOKIE_NAME, SESSION_SECONDS, SessionSigner
+from .commands import (
+    CommandError,
+    bots_command,
+    extend_match_command,
+    ids_in,
+    list_entries,
+    parse_playerlist,
+    player_command,
+    say_command,
+)
 from .maps import MapCatalog
 from .rcon import RconAuthError, RconClient, RconError
 from .settings import SettingsError, SettingsStore, validate_map
@@ -70,6 +80,27 @@ class ConsoleRequest(BaseModel):
 
 class LoginRequest(BaseModel):
     password: str
+
+
+class PlayerActionRequest(BaseModel):
+    reason: str | None = None
+    duration: int | None = None
+    team: int | None = None
+    name: str | None = None
+
+
+class BotsRequest(BaseModel):
+    action: str
+    amount: int
+    team: int | None = None
+
+
+class SayRequest(BaseModel):
+    message: str
+
+
+class ExtendMatchRequest(BaseModel):
+    seconds: int
 
 
 def create_app(config: Config) -> FastAPI:
@@ -179,6 +210,53 @@ def create_app(config: Config) -> FastAPI:
     def restart():
         store.request_restart()
         return store.state()
+
+    def build(builder, *args, **kwargs) -> str:
+        try:
+            return builder(*args, **kwargs)
+        except CommandError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @api.get("/players")
+    def players():
+        players, bots = parse_playerlist(run_rcon("playerlist"))
+        admins = ids_in(run_rcon("adminlist"))
+        return {
+            "players": [{**vars(p), "admin": p.id in admins} for p in players],
+            "bots": bots,
+        }
+
+    @api.post("/players/{target}/{action}")
+    def player_action(target: str, action: str, body: PlayerActionRequest | None = None):
+        body = body or PlayerActionRequest()
+        command = build(player_command, action, target, reason=body.reason, duration=body.duration,
+                        team=body.team, name=body.name)
+        return {"command": command, "output": run_rcon(command)}
+
+    @api.post("/bots")
+    def bots(body: BotsRequest):
+        command = build(bots_command, body.action, body.amount, body.team)
+        return {"command": command, "output": run_rcon(command)}
+
+    @api.post("/say")
+    def say(body: SayRequest):
+        return {"output": run_rcon(build(say_command, body.message))}
+
+    @api.get("/bans")
+    def bans():
+        return {"entries": list_entries(run_rcon("banlist"))}
+
+    @api.get("/mutes")
+    def mutes():
+        return {"entries": list_entries(run_rcon("mutelist"))}
+
+    @api.get("/match")
+    def match():
+        return {"output": run_rcon("getmatchduration")}
+
+    @api.post("/match/extend")
+    def extend_match(body: ExtendMatchRequest):
+        return {"output": run_rcon(build(extend_match_command, body.seconds))}
 
     @api.post("/console")
     def console(body: ConsoleRequest):

@@ -199,3 +199,61 @@ def test_missing_panel_password_refuses_to_start(monkeypatch):
 
 def test_responses_are_revalidated(client):
     assert client.get("/static/app.js").headers["cache-control"] == "no-cache"
+
+
+@pytest.fixture
+def players_client(data_dir):
+    responses = {
+        "playerlist": "10074AF86EBCB9A2, Infish1, 12 ms, team 0\nABCDEF0123456789, Guest, 80 ms, team 1\nThere are 2 bots.",
+        "adminlist": "10074AF86EBCB9A2",
+        "banlist": "AAAAAAAAAAAAAAAA, cheating, 1440\n",
+        "getmatchduration": "Match time remaining: 600",
+    }
+    with FakeRconServer("rcon-pass", responses) as server:
+        config = Config(panel_password="panel-pass", data_dir=data_dir, rcon_password="rcon-pass",
+                        rcon=RconClient("127.0.0.1", server.port, "rcon-pass"))
+        yield panel_client(config), server
+
+
+def test_players_list_marks_admins(players_client):
+    client, _ = players_client
+    assert client.get("/api/players").json() == {
+        "players": [
+            {"id": "10074AF86EBCB9A2", "name": "Infish1", "ping": 12, "team": 0, "admin": True},
+            {"id": "ABCDEF0123456789", "name": "Guest", "ping": 80, "team": 1, "admin": False},
+        ],
+        "bots": 2,
+    }
+
+
+def test_player_actions_send_rcon(players_client):
+    client, server = players_client
+    response = client.post("/api/players/ABCDEF0123456789/ban", headers=WRITE,
+                           json={"reason": "team killing", "duration": 60})
+    assert response.status_code == 200
+    assert response.json()["command"] == "ban ABCDEF0123456789 team_killing 60"
+    assert client.post("/api/players/ABCDEF0123456789/admin", headers=WRITE).status_code == 200
+    assert client.post("/api/players/ABCDEF0123456789/team", headers=WRITE, json={"team": 0}).status_code == 200
+    assert server.commands == [
+        "ban ABCDEF0123456789 team_killing 60", "addadmin ABCDEF0123456789", "changeteam ABCDEF0123456789 0",
+    ]
+
+
+def test_player_action_validation(players_client):
+    client, server = players_client
+    assert client.post("/api/players/Guest/kick", headers=WRITE).status_code == 400
+    assert client.post("/api/players/ABCDEF0123456789/shutdown", headers=WRITE).status_code == 400
+    assert client.post("/api/players/ABCDEF0123456789/kick").status_code == 403  # missing panel header
+    assert server.commands == []
+
+
+def test_bots_say_bans_match(players_client):
+    client, server = players_client
+    assert client.post("/api/bots", headers=WRITE, json={"action": "add", "amount": 4, "team": 1}).status_code == 200
+    assert client.post("/api/say", headers=WRITE, json={"message": "Map change in 1 min"}).status_code == 200
+    assert client.post("/api/match/extend", headers=WRITE, json={"seconds": 300}).status_code == 200
+    assert client.get("/api/bans").json() == {
+        "entries": [{"text": "AAAAAAAAAAAAAAAA, cheating, 1440", "id": "AAAAAAAAAAAAAAAA"}],
+    }
+    assert client.get("/api/match").json() == {"output": "Match time remaining: 600"}
+    assert server.commands[:3] == ["addbots 4 1", "say Map change in 1 min", "extendmatchduration 300"]

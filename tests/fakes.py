@@ -14,7 +14,8 @@ from mordhau_panel.rcon import (
 
 
 class FakeRconServer:
-    """Answers commands from `responses`; replies longer than chunk_size are split."""
+    """Answers commands from `responses` (a string, or a callable taking the full
+    command); replies longer than chunk_size are split."""
 
     def __init__(self, password: str, responses: dict[str, str] | None = None, chunk_size: int = 4000):
         self.password = password
@@ -57,6 +58,8 @@ class FakeRconServer:
                     return
                 self.commands.append(body)
                 reply = self.responses.get(body.split(" ", 1)[0], f"ran {body}")
+                if callable(reply):
+                    reply = reply(body)
                 chunks = [reply[i:i + self.chunk_size] for i in range(0, len(reply), self.chunk_size)] or [""]
                 for chunk in chunks:
                     conn.sendall(encode_packet(request_id, SERVERDATA_RESPONSE_VALUE, chunk))

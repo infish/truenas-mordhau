@@ -88,6 +88,7 @@ async function refreshStatus() {
     setStatus("offline", "Server offline or starting");
   }
   $("rcon-warning").hidden = data.rcon_configured;
+  state.rconConfigured = data.rcon_configured;
   applySettings(data.settings);
   renderMapGrid();
 }
@@ -289,6 +290,176 @@ async function resetSettings() {
   }
 }
 
+// ---- Players -------------------------------------------------------------
+
+// Durations are in minutes; 0 is permanent.
+const DURATIONS = [["10 minutes", 10], ["1 hour", 60], ["1 day", 1440], ["1 week", 10080], ["Permanent", 0]];
+const playerRows = new Map(); // PlayFab ID -> row elements, kept across refreshes
+
+async function refreshPlayers() {
+  if (state.rconConfigured === false) {
+    $("players-summary").textContent = "Needs RCON.";
+    return;
+  }
+  let data;
+  try {
+    data = await api("GET", "/api/players");
+  } catch (error) {
+    $("players-summary").textContent = `Player list unavailable: ${error.message}`;
+    return;
+  }
+  const people = data.players.length;
+  const parts = [`${people} player${people === 1 ? "" : "s"}`];
+  if (data.bots) parts.push(`${data.bots} bot${data.bots === 1 ? "" : "s"}`);
+  $("players-summary").textContent = parts.join(" · ");
+  renderPlayers(data.players);
+}
+
+function renderPlayers(players) {
+  const list = $("player-list");
+  const seen = new Set();
+  for (const player of players) {
+    seen.add(player.id);
+    let row = playerRows.get(player.id);
+    if (!row) {
+      row = createPlayerRow(player.id);
+      playerRows.set(player.id, row);
+    }
+    updatePlayerRow(row, player);
+    list.append(row.li); // re-appending keeps server order without rebuilding rows
+  }
+  for (const [id, row] of playerRows) {
+    if (!seen.has(id)) {
+      row.li.remove();
+      playerRows.delete(id);
+    }
+  }
+}
+
+function createPlayerRow(id) {
+  const row = { id, player: null };
+  row.name = el("span", { className: "player-name" });
+  row.meta = el("span", { className: "player-meta" });
+  const toggle = el("button", { textContent: "Actions", className: "small" });
+  toggle.setAttribute("aria-expanded", "false");
+
+  row.adminBtn = el("button");
+  row.teamBtn = el("button");
+  const kill = el("button", { textContent: "Kill", className: "danger" });
+  row.adminBtn.addEventListener("click", () => playerAction(row, row.player.admin ? "unadmin" : "admin"));
+  row.teamBtn.addEventListener("click", () => playerAction(row, "team", { team: row.player.team === 0 ? 1 : 0 }));
+  kill.addEventListener("click", () => playerAction(row, "kill", {}, `Kill ${row.player.name}?`));
+
+  const reason = el("input", { type: "text", placeholder: "Reason (optional)", maxLength: 200 });
+  const duration = el("select", {}, DURATIONS.map(([label, minutes]) =>
+    el("option", { value: String(minutes), textContent: label })));
+  duration.value = "60";
+  const mute = el("button", { textContent: "Mute" });
+  const unmute = el("button", { textContent: "Unmute" });
+  const kick = el("button", { textContent: "Kick", className: "danger" });
+  const ban = el("button", { textContent: "Ban", className: "danger" });
+  const minutes = () => Number(duration.value);
+  mute.addEventListener("click", () => playerAction(row, "mute", { duration: minutes() }));
+  unmute.addEventListener("click", () => playerAction(row, "unmute"));
+  kick.addEventListener("click", () =>
+    playerAction(row, "kick", { reason: reason.value }, `Kick ${row.player.name}?`));
+  ban.addEventListener("click", () => {
+    const label = duration.selectedOptions[0].textContent.toLowerCase();
+    playerAction(row, "ban", { reason: reason.value, duration: minutes() }, `Ban ${row.player.name} (${label})?`);
+  });
+
+  const newName = el("input", { type: "text", placeholder: "New name", maxLength: 200 });
+  const rename = el("button", { textContent: "Rename" });
+  rename.addEventListener("click", () => {
+    if (newName.value.trim()) playerAction(row, "rename", { name: newName.value }).then(() => { newName.value = ""; });
+  });
+
+  const actions = el("div", { className: "player-actions", hidden: true }, [
+    el("div", { className: "tool-row" }, [row.adminBtn, row.teamBtn, kill]),
+    el("div", { className: "tool-row" }, [reason, duration]),
+    el("div", { className: "tool-row" }, [mute, unmute, kick, ban]),
+    el("div", { className: "tool-row" }, [newName, rename]),
+  ]);
+  toggle.addEventListener("click", () => {
+    actions.hidden = !actions.hidden;
+    toggle.setAttribute("aria-expanded", String(!actions.hidden));
+  });
+
+  const info = el("div", { className: "player-info" }, [row.name, row.meta]);
+  row.li = el("li", { className: "player" }, [el("div", { className: "player-head" }, [info, toggle]), actions]);
+  return row;
+}
+
+function updatePlayerRow(row, player) {
+  row.player = player;
+  row.name.replaceChildren(player.name);
+  if (player.admin) row.name.append(el("span", { className: "badge", textContent: "admin" }));
+  row.meta.textContent = `Team ${player.team} · ${player.ping} ms`;
+  row.adminBtn.textContent = player.admin ? "Remove admin" : "Make admin";
+  row.teamBtn.textContent = `Move to team ${player.team === 0 ? 1 : 0}`;
+}
+
+async function playerAction(row, action, body = {}, confirmText = null) {
+  if (confirmText && !confirm(confirmText)) return;
+  try {
+    const result = await api("POST", `/api/players/${encodeURIComponent(row.id)}/${action}`, body);
+    notify(result.output || `Sent: ${result.command}`);
+    setTimeout(refreshPlayers, 500);
+  } catch (error) {
+    notify(`${action} failed: ${error.message}`, true);
+  }
+}
+
+async function botsAction(action) {
+  const team = $("bot-team").value;
+  const body = { action, amount: Number($("bot-amount").value), team: team === "" ? null : Number(team) };
+  try {
+    const result = await api("POST", "/api/bots", body);
+    notify(result.output || `Sent: ${result.command}`);
+    setTimeout(refreshPlayers, 1000);
+  } catch (error) {
+    notify(`Bots failed: ${error.message}`, true);
+  }
+}
+
+async function loadEntries(path, listId, action, label) {
+  const list = $(listId);
+  try {
+    const { entries } = await api("GET", path);
+    if (!entries.length) {
+      list.replaceChildren(el("li", { className: "hint", textContent: "Empty." }));
+      return;
+    }
+    list.replaceChildren(...entries.map((entry) => {
+      const children = [el("span", { className: "entry-text", textContent: entry.text })];
+      if (entry.id) {
+        const button = el("button", { textContent: label, className: "small" });
+        button.addEventListener("click", async () => {
+          try {
+            const result = await api("POST", `/api/players/${encodeURIComponent(entry.id)}/${action}`);
+            notify(result.output || `Sent: ${result.command}`);
+            loadEntries(path, listId, action, label);
+          } catch (error) {
+            notify(`${label} failed: ${error.message}`, true);
+          }
+        });
+        children.push(button);
+      }
+      return el("li", {}, children);
+    }));
+  } catch (error) {
+    list.replaceChildren(el("li", { className: "hint", textContent: error.message }));
+  }
+}
+
+async function checkMatch() {
+  try {
+    $("match-output").textContent = (await api("GET", "/api/match")).output;
+  } catch (error) {
+    $("match-output").textContent = error.message;
+  }
+}
+
 // ---- Console -------------------------------------------------------------
 
 async function sendCommand(command) {
@@ -342,5 +513,44 @@ for (const chip of document.querySelectorAll("[data-command]")) {
   chip.addEventListener("click", () => sendCommand(chip.dataset.command));
 }
 
-loadMaps().then(refreshStatus);
-setInterval(refreshStatus, 5000);
+$("bots-add").addEventListener("click", () => botsAction("add"));
+$("bots-remove").addEventListener("click", () => botsAction("remove"));
+$("say-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const input = $("say-input");
+  if (!input.value.trim()) return;
+  try {
+    await api("POST", "/api/say", { message: input.value });
+    notify("Message sent.");
+    input.value = "";
+  } catch (error) {
+    notify(`Message failed: ${error.message}`, true);
+  }
+});
+$("match-check").addEventListener("click", checkMatch);
+for (const button of document.querySelectorAll("[data-extend]")) {
+  button.addEventListener("click", async () => {
+    try {
+      const result = await api("POST", "/api/match/extend", { seconds: Number(button.dataset.extend) });
+      notify(result.output || "Match extended.");
+      checkMatch();
+    } catch (error) {
+      notify(`Extend failed: ${error.message}`, true);
+    }
+  });
+}
+$("bans").addEventListener("toggle", (event) => {
+  if (event.target.open) loadEntries("/api/bans", "ban-list", "unban", "Unban");
+});
+$("mutes").addEventListener("toggle", (event) => {
+  if (event.target.open) loadEntries("/api/mutes", "mute-list", "unmute", "Unmute");
+});
+
+function tick() {
+  if (document.hidden) return;
+  refreshStatus().then(refreshPlayers);
+}
+
+loadMaps().then(tick);
+setInterval(tick, 5000);
+document.addEventListener("visibilitychange", tick);
