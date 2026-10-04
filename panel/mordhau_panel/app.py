@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .a2s import QueryError, query_info
-from .auth import COOKIE_NAME, SESSION_SECONDS, SessionSigner
+from .auth import COOKIE_NAME, SESSION_SECONDS, PanelAuth, ensure_rcon_password, new_setup_code, normalize_code
 from .commands import (
     CommandError,
     bots_command,
@@ -26,6 +26,7 @@ from .commands import (
 )
 from .maps import MapCatalog
 from .rcon import RconAuthError, RconClient, RconError
+from .server_settings import ServerSettingsError, ServerSettingsStore, validate_changes
 from .settings import SettingsError, SettingsStore, validate_map
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -33,11 +34,13 @@ STATIC_DIR = Path(__file__).parent / "static"
 # one on writes blocks CSRF (on top of the SameSite session cookie).
 CSRF_HEADER = "x-panel-request"
 FAILED_LOGIN_DELAY = 1.0
+MIN_PANEL_PASSWORD = 8
 
 
 @dataclass
 class Config:
-    panel_password: str
+    # Unset: the password comes from the setup screen (stored hashed in /data/panel).
+    panel_password: str | None = None
     panel_username: str = "admin"
     data_dir: Path = Path("/data")
     rcon_host: str = "server"
@@ -49,11 +52,8 @@ class Config:
 
     @classmethod
     def from_env(cls) -> "Config":
-        password = os.environ.get("PANEL_PASSWORD", "")
-        if not password:
-            raise SystemExit("PANEL_PASSWORD must be set")
         return cls(
-            panel_password=password,
+            panel_password=os.environ.get("PANEL_PASSWORD") or None,
             panel_username=os.environ.get("PANEL_USERNAME", "admin"),
             data_dir=Path(os.environ.get("DATA_DIR", "/data")),
             rcon_host=os.environ.get("RCON_HOST", "server"),
@@ -103,29 +103,78 @@ class ExtendMatchRequest(BaseModel):
     seconds: int
 
 
+class ServerSettingsRequest(BaseModel):
+    server_name: str | None = None
+    max_players: int | None = None
+    advertise: bool | None = None
+    server_password: str | None = None
+    clear_server_password: bool = False
+    admin_password: str | None = None
+    clear_admin_password: bool = False
+    restart: bool = False
+
+
+class SetupRequest(BaseModel):
+    code: str
+    panel_password: str
+    server_name: str
+    max_players: int = 16
+    advertise: bool = False
+    server_password: str = ""
+    admin_password: str = ""
+
+
+class PanelPasswordRequest(BaseModel):
+    current: str
+    new: str
+
+
+def check_new_panel_password(password: str) -> None:
+    if len(password) < MIN_PANEL_PASSWORD:
+        raise HTTPException(400, f"Panel password needs at least {MIN_PANEL_PASSWORD} characters")
+    if any(ord(ch) < 32 for ch in password):
+        raise HTTPException(400, "Panel password cannot contain control characters")
+
+
+def announce_setup_code(code: str) -> None:
+    line = "=" * 60
+    print(f"\n{line}\n  Mordhau panel setup code: {code}\n"
+          f"  Open the panel on port 37080 and enter this code.\n{line}\n", flush=True)
+
+
 def create_app(config: Config) -> FastAPI:
-    rcon = config.rcon or RconClient(config.rcon_host, config.rcon_port, config.rcon_password)
+    panel_dir = config.data_dir / "panel"
+    rcon_password = ensure_rcon_password(panel_dir, config.rcon_password)
+    rcon = config.rcon or RconClient(config.rcon_host, config.rcon_port, rcon_password)
     catalog = MapCatalog(config.data_dir / "server" / "Mordhau" / "Content" / "Paks")
-    store = SettingsStore(config.data_dir / "panel")
-    signer = SessionSigner(config.panel_password)
+    store = SettingsStore(panel_dir)
+    server_store = ServerSettingsStore(panel_dir)
+    auth = PanelAuth(panel_dir, config.panel_password)
+    # A fresh code each start, shown only in the container log.
+    setup_code = new_setup_code() if auth.needs_setup else None
+    if setup_code:
+        announce_setup_code(setup_code)
     # auto_error=False: no WWW-Authenticate challenge, so browsers show the
     # login page instead of a native popup. Basic auth still works for scripts.
     basic = HTTPBasic(auto_error=False)
 
-    def password_ok(password: str) -> bool:
-        return secrets.compare_digest(password.encode(), config.panel_password.encode())
-
     def authenticated(request: Request, credentials: HTTPBasicCredentials | None) -> bool:
-        if signer.valid(request.cookies.get(COOKIE_NAME)):
+        if auth.needs_setup:
+            return False
+        if auth.signer.valid(request.cookies.get(COOKIE_NAME)):
             return True
         if credentials is None:
             return False
         user_ok = secrets.compare_digest(credentials.username.encode(), config.panel_username.encode())
-        return user_ok and password_ok(credentials.password)
+        return user_ok and auth.check(credentials.password)
 
     def require_auth(request: Request, credentials: HTTPBasicCredentials | None = Depends(basic)) -> None:
         if not authenticated(request, credentials):
-            raise HTTPException(401, "Not logged in")
+            raise HTTPException(401, "Setup required" if auth.needs_setup else "Not logged in")
+
+    def start_session(response: Response) -> None:
+        response.set_cookie(COOKIE_NAME, auth.signer.issue(), max_age=SESSION_SECONDS,
+                            httponly=True, samesite="strict")
 
     app = FastAPI(title="Mordhau panel", docs_url=None, redoc_url=None, openapi_url=None)
     api = APIRouter(prefix="/api", dependencies=[Depends(require_auth)])
@@ -149,16 +198,47 @@ def create_app(config: Config) -> FastAPI:
 
     @app.get("/")
     def index(request: Request, credentials: HTTPBasicCredentials | None = Depends(basic)):
-        page = "index.html" if authenticated(request, credentials) else "login.html"
+        if auth.needs_setup:
+            page = "setup.html"
+        else:
+            page = "index.html" if authenticated(request, credentials) else "login.html"
         return FileResponse(STATIC_DIR / page)
+
+    @app.post("/setup")
+    def setup(body: SetupRequest, response: Response):
+        if not auth.needs_setup:
+            raise HTTPException(409, "Setup is already done")
+        if not secrets.compare_digest(normalize_code(body.code), normalize_code(setup_code)):
+            time.sleep(FAILED_LOGIN_DELAY)
+            raise HTTPException(401, "Wrong setup code. It is printed in the panel container's log.")
+        check_new_panel_password(body.panel_password)
+        changes = {
+            "server_name": body.server_name,
+            "max_players": body.max_players,
+            "advertise": body.advertise,
+            "server_password": body.server_password,
+            "clear_server_password": not body.server_password,
+            "admin_password": body.admin_password,
+            "clear_admin_password": not body.admin_password,
+        }
+        try:
+            validate_changes(changes)
+        except ServerSettingsError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        # Writing server.env releases a server waiting for setup.
+        server_store.update(changes)
+        auth.set_password(body.panel_password)
+        start_session(response)
+        return {"ok": True}
 
     @app.post("/login")
     def login(body: LoginRequest, response: Response):
-        if not password_ok(body.password):
+        if auth.needs_setup:
+            raise HTTPException(409, "Setup required")
+        if not auth.check(body.password):
             time.sleep(FAILED_LOGIN_DELAY)
             raise HTTPException(401, "Wrong password")
-        response.set_cookie(COOKIE_NAME, signer.issue(), max_age=SESSION_SECONDS,
-                            httponly=True, samesite="strict")
+        start_session(response)
         return {"ok": True}
 
     @app.post("/logout")
@@ -174,7 +254,7 @@ def create_app(config: Config) -> FastAPI:
             server = {"online": False, "error": str(exc)}
         return {
             "server": server,
-            "rcon_configured": bool(config.rcon_password),
+            "rcon_configured": bool(rcon_password),
             "settings": store.state(),
         }
 
@@ -257,6 +337,33 @@ def create_app(config: Config) -> FastAPI:
     @api.post("/match/extend")
     def extend_match(body: ExtendMatchRequest):
         return {"output": run_rcon(build(extend_match_command, body.seconds))}
+
+    @api.get("/server-settings")
+    def get_server_settings():
+        return {**server_store.view(), "panel_password_managed_by": auth.managed_by}
+
+    @api.put("/server-settings")
+    def put_server_settings(body: ServerSettingsRequest):
+        try:
+            server_store.update(body.model_dump(exclude={"restart"}))
+        except ServerSettingsError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        if body.restart:
+            store.request_restart()
+        return {**server_store.view(), "panel_password_managed_by": auth.managed_by,
+                "restart_pending": store.state()["restart_pending"]}
+
+    @api.post("/panel-password")
+    def change_panel_password(body: PanelPasswordRequest, response: Response):
+        if auth.managed_by == "env":
+            raise HTTPException(409, "The panel password is set by PANEL_PASSWORD in the TrueNAS app config")
+        if not auth.check(body.current):
+            time.sleep(FAILED_LOGIN_DELAY)
+            raise HTTPException(401, "Current password is wrong")
+        check_new_panel_password(body.new)
+        auth.set_password(body.new)
+        start_session(response)  # other devices are logged out by the new key
+        return {"ok": True}
 
     @api.post("/console")
     def console(body: ConsoleRequest):

@@ -52,17 +52,42 @@ restarts even with `APPLY_ENV_ON_START: "true"`.
 2. Create the dataset `/mnt/Apps/MordhauServer` with write access for the
    `apps` user (UID/GID `568`).
 
-3. Edit `compose.truenas.yaml`: replace every `CHANGE_ME_*` value. Use the
-   same `RCON_PASSWORD` in both services. `PANEL_PASSWORD` is the login for
-   the panel (username `admin` by default).
+3. Install `compose.truenas.yaml` via YAML in TrueNAS. It contains no
+   passwords. The server starts downloading the game files, then waits for
+   setup.
 
-4. Install via YAML in TrueNAS. The first start downloads the server, which
-   takes a few minutes.
+4. In TrueNAS, open Apps > the Mordhau app > Logs and find the
+   "Mordhau panel setup code" in the panel container's log. The code is new
+   each time the panel starts, until setup is done.
 
-5. Open the panel at `http://<truenas-ip>:37080`.
+5. Open `http://<truenas-ip>:37080`, enter the setup code, choose the panel
+   password, server name, join and admin passwords, max players and whether
+   to list the server publicly, then click Finish. The game server starts.
 
-The panel uses HTTP Basic auth without TLS, so keep port 37080 on your LAN or
-tailnet and do not forward it from the internet.
+Everything from the setup screen can be changed later under **Server
+settings** in the panel. Maps and rotation are set under **Rotation &
+startup map**.
+
+### Where settings live
+
+All of it is under `/data/panel` on the dataset:
+
+| File | Contents |
+| --- | --- |
+| `server.env` | server name, passwords, max players, public listing (written by the panel; each key overrides the app's environment variable) |
+| `settings.env` | startup map and rotation |
+| `panel-auth.env` | panel password hash and session key |
+| `rcon.env` | generated RCON password shared by both containers |
+| `effective.env` | what the server last started with (no secrets) |
+
+Installs that set `PANEL_PASSWORD` and `RCON_PASSWORD` in the app config keep
+working: setup is skipped and those values are used. To change the panel
+password in the panel instead, remove `PANEL_PASSWORD` from the app config
+(the panel then shows the setup screen once). If you set `RCON_PASSWORD`, set
+it on both containers or on neither.
+
+The panel uses a login page with a 30-day session cookie, without TLS, so keep
+port 37080 on your LAN or tailnet and do not forward it from the internet.
 
 ## Ports
 
@@ -102,7 +127,7 @@ uv export --no-dev --no-emit-project -o panel/requirements.txt
 ## Backup
 
 Snapshot the dataset mounted at `/data`. The important paths are
-`config/Game.ini`, `config/Engine.ini`, `panel/settings.env`,
-`server/Mordhau/Saved`, and `logs`.
+`config/Game.ini`, `config/Engine.ini`, `panel/`, `server/Mordhau/Saved`,
+and `logs`.
 
 See `docs/config-notes.md` for config details.

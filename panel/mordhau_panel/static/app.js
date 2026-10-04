@@ -460,6 +460,75 @@ async function checkMatch() {
   }
 }
 
+// ---- Server settings -----------------------------------------------------
+
+function passwordHint(isSet) {
+  if (isSet === true) return "Unchanged (a password is set)";
+  if (isSet === false) return "Unchanged (none set)";
+  return "Unchanged";
+}
+
+function showServerSettings(view) {
+  $("ss-name").value = view.server_name ?? "";
+  $("ss-max-players").value = view.max_players ?? "";
+  $("ss-advertise").checked = Boolean(view.advertise);
+  for (const [field, isSet] of [["server-password", view.server_password_set], ["admin-password", view.admin_password_set]]) {
+    $(`ss-${field}`).value = "";
+    $(`ss-${field}`).placeholder = passwordHint(isSet);
+    $(`ss-${field}`).disabled = false;
+    $(`ss-clear-${field}`).checked = false;
+  }
+  const envManaged = view.panel_password_managed_by === "env";
+  $("pp-env-note").hidden = !envManaged;
+  $("panel-password-form").hidden = envManaged;
+}
+
+async function loadServerSettings() {
+  try {
+    showServerSettings(await api("GET", "/api/server-settings"));
+  } catch (error) {
+    notify(`Could not load server settings: ${error.message}`, true);
+  }
+}
+
+async function saveServerSettings(restart) {
+  if (!$("server-settings-form").reportValidity()) return;
+  if (restart && !confirm("Restart the server now? Everyone on it will be disconnected for about a minute.")) return;
+  const body = {
+    server_name: $("ss-name").value,
+    max_players: Number($("ss-max-players").value),
+    advertise: $("ss-advertise").checked,
+    server_password: $("ss-server-password").value || null,
+    clear_server_password: $("ss-clear-server-password").checked,
+    admin_password: $("ss-admin-password").value || null,
+    clear_admin_password: $("ss-clear-admin-password").checked,
+    restart,
+  };
+  try {
+    const view = await api("PUT", "/api/server-settings", body);
+    showServerSettings(view);
+    notify(restart ? "Saved. Restarting the server…" : "Saved. Applies on the next server restart.");
+    if (restart) refreshStatus();
+  } catch (error) {
+    notify(`Save failed: ${error.message}`, true);
+  }
+}
+
+async function changePanelPassword(event) {
+  event.preventDefault();
+  if ($("pp-new").value !== $("pp-new-2").value) {
+    notify("The new passwords do not match.", true);
+    return;
+  }
+  try {
+    await api("POST", "/api/panel-password", { current: $("pp-current").value, new: $("pp-new").value });
+    event.target.reset();
+    notify("Panel password changed. Other devices need to log in again.");
+  } catch (error) {
+    notify(`Password change failed: ${error.message}`, true);
+  }
+}
+
 // ---- Console -------------------------------------------------------------
 
 async function sendCommand(command) {
@@ -513,6 +582,15 @@ for (const chip of document.querySelectorAll("[data-command]")) {
   chip.addEventListener("click", () => sendCommand(chip.dataset.command));
 }
 
+$("ss-save").addEventListener("click", () => saveServerSettings(false));
+$("ss-save-restart").addEventListener("click", () => saveServerSettings(true));
+for (const field of ["server-password", "admin-password"]) {
+  $(`ss-clear-${field}`).addEventListener("change", (event) => {
+    $(`ss-${field}`).disabled = event.target.checked;
+    if (event.target.checked) $(`ss-${field}`).value = "";
+  });
+}
+$("panel-password-form").addEventListener("submit", changePanelPassword);
 $("bots-add").addEventListener("click", () => botsAction("add"));
 $("bots-remove").addEventListener("click", () => botsAction("remove"));
 $("say-form").addEventListener("submit", async (event) => {
@@ -552,5 +630,6 @@ function tick() {
 }
 
 loadMaps().then(tick);
+loadServerSettings();
 setInterval(tick, 5000);
 document.addEventListener("visibilitychange", tick);

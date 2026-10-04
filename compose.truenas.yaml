@@ -14,22 +14,12 @@ services:
       STEAM_VALIDATE: "false"
       STEAM_BRANCH: ""
 
-      # These are applied when config/Game.ini and config/Engine.ini are first
-      # created. Set APPLY_ENV_ON_START to "true" for one redeploy if you want
-      # compose values to overwrite config files again.
-      APPLY_ENV_ON_START: "false"
-      SERVER_NAME: "Home Mordhau"
-      SERVER_PASSWORD: ""
-      ADMIN_PASSWORD: "CHANGE_ME_LONG_RANDOM_PASSWORD"
-      # Required by the panel. Use the same value in the panel service below.
-      RCON_PASSWORD: "CHANGE_ME_RCON_PASSWORD"
-      MAX_PLAYERS: "16"
-      ADVERTISE_SERVER: "false"
-      # Defaults only: rotation saved from the panel takes precedence.
-      # MAP_ROTATION is comma-separated with no length limit; the older
-      # MAP_ROTATION_1, MAP_ROTATION_2, ... form also still works.
-      DEFAULT_MAP: "FFA_ThePit"
-      MAP_ROTATION: "FFA_ThePit,FFA_Camp,TDM_Camp"
+      # The server waits for the panel's setup screen before its first start.
+      # Server name, passwords, max players and maps are set in the panel.
+      # (The older SERVER_NAME, SERVER_PASSWORD, ADMIN_PASSWORD, MAX_PLAYERS,
+      # ADVERTISE_SERVER, DEFAULT_MAP and MAP_ROTATION variables still work as
+      # defaults; values saved in the panel take precedence.)
+      WAIT_FOR_SETUP: "true"
 
       # Mordhau ports.
       GAME_PORT: "37000"
@@ -77,13 +67,9 @@ services:
     restart: unless-stopped
     environment:
       TZ: Europe/Prague
-      PANEL_USERNAME: "admin"
-      PANEL_PASSWORD: "CHANGE_ME_PANEL_PASSWORD"
-      RCON_PASSWORD: "CHANGE_ME_RCON_PASSWORD"
-      RCON_HOST: "server"
-      RCON_PORT: "37001"
-      QUERY_HOST: "server"
-      QUERY_PORT: "37003"
+      # The panel password is set on the setup screen, and the RCON password
+      # is generated and shared with the server automatically. Setting
+      # PANEL_PASSWORD or RCON_PASSWORD here overrides that.
     volumes:
       - type: bind
         source: /mnt/Apps/MordhauServer

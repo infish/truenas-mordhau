@@ -59,8 +59,11 @@ load_map_settings() {
   if [[ -f "$panel_settings" ]]; then
     local -a panel_rotation=()
     local panel_has_rotation="false"
-    while IFS='=' read -r key value || [[ -n "$key" ]]; do
-      value="${value%$'\r'}"
+    local line
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      line="${line%$'\r'}"
+      key="${line%%=*}"
+      value="${line#*=}"
       case "$key" in
         DEFAULT_MAP)
           if valid_map "$value"; then
@@ -128,6 +131,50 @@ apply_rotation() {
     "$(printf 'MapRotation=%s\n' "${effective_rotation[@]}")"
 }
 
+# Server settings the panel may override, one key at a time, via server.env.
+server_setting_keys=(SERVER_NAME SERVER_PASSWORD ADMIN_PASSWORD MAX_PLAYERS ADVERTISE_SERVER)
+declare -A env_defaults=()
+declare -A env_default_set=()
+for key in "${server_setting_keys[@]}" RCON_PASSWORD; do
+  if [[ -v "$key" ]]; then
+    env_defaults[$key]="${!key}"
+    env_default_set[$key]=1
+  fi
+done
+
+# Resets the settings to the container environment, then applies server.env
+# (written by the panel) and the panel-generated RCON password.
+load_server_settings() {
+  local key line value
+  for key in "${server_setting_keys[@]}" RCON_PASSWORD; do
+    if [[ -n "${env_default_set[$key]:-}" ]]; then
+      printf -v "$key" '%s' "${env_defaults[$key]}"
+    else
+      unset "$key"
+    fi
+  done
+
+  if [[ -f "$server_settings" ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      line="${line%$'\r'}"
+      key="${line%%=*}"
+      value="${line#*=}"
+      [[ "$line" == *=* ]] || continue
+      case " ${server_setting_keys[*]} " in
+        *" ${key} "*) printf -v "$key" '%s' "$value" ;;
+        *) log "Ignoring unknown key in ${server_settings}: ${key}" ;;
+      esac
+    done < "$server_settings"
+  fi
+
+  if [[ -z "${RCON_PASSWORD:-}" && -f "$rcon_settings" ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      line="${line%$'\r'}"
+      [[ "${line%%=*}" == "RCON_PASSWORD" ]] && RCON_PASSWORD="${line#*=}"
+    done < "$rcon_settings"
+  fi
+}
+
 write_effective_settings() {
   local tmp="${effective_settings}.tmp"
   local joined
@@ -135,6 +182,12 @@ write_effective_settings() {
   {
     printf 'DEFAULT_MAP=%s\n' "$effective_default_map"
     printf 'MAP_ROTATION=%s\n' "$joined"
+    printf 'SERVER_NAME=%s\n' "${SERVER_NAME:-Home Mordhau}"
+    printf 'MAX_PLAYERS=%s\n' "${MAX_PLAYERS:-16}"
+    printf 'ADVERTISE_SERVER=%s\n' "$(truthy "${ADVERTISE_SERVER:-false}" && echo true || echo false)"
+    printf 'HAS_SERVER_PASSWORD=%s\n' "$([[ -n "${SERVER_PASSWORD:-}" ]] && echo true || echo false)"
+    printf 'HAS_ADMIN_PASSWORD=%s\n' "$([[ -n "${ADMIN_PASSWORD:-}" ]] && echo true || echo false)"
+    printf 'HAS_RCON=%s\n' "$([[ -n "${RCON_PASSWORD:-}" ]] && echo true || echo false)"
     printf 'STARTED_AT=%s\n' "$(date +%s)"
   } > "$tmp"
   mv "$tmp" "$effective_settings"
@@ -201,6 +254,8 @@ beacon_port="${BEACON_PORT:-37002}"
 query_port="${QUERY_PORT:-37003}"
 panel_dir="${PANEL_DIR:-/data/panel}"
 panel_settings="${panel_dir}/settings.env"
+server_settings="${panel_dir}/server.env"
+rcon_settings="${panel_dir}/rcon.env"
 effective_settings="${panel_dir}/effective.env"
 restart_request="${panel_dir}/restart-request"
 
@@ -279,10 +334,11 @@ if [[ ! -x "$server_binary" ]]; then
 fi
 
 configure_server() {
+  load_server_settings
   load_map_settings
 
-  if [[ ! -f "$game_ini" || ! -f "$engine_ini" ]] || truthy "${APPLY_ENV_ON_START:-false}"; then
-    log "Writing environment-backed Mordhau config"
+  if [[ ! -f "$game_ini" || ! -f "$engine_ini" || -f "$server_settings" ]] || truthy "${APPLY_ENV_ON_START:-false}"; then
+    log "Writing Mordhau config"
     write_configs "$game_ini" "$engine_ini"
   elif [[ -f "$panel_settings" ]]; then
     log "Applying panel map rotation to existing Game.ini"
@@ -320,6 +376,18 @@ stop_server() {
 
 cd "$(dirname "$server_binary")"
 rm -f "$restart_request"
+
+# New installs set WAIT_FOR_SETUP so the server never runs with defaults:
+# the server files download first, then this waits for the panel's setup.
+if truthy "${WAIT_FOR_SETUP:-false}" && [[ ! -f "$server_settings" ]]; then
+  log "Waiting for setup: open the panel (port 37080) and enter the setup code from the panel's log"
+  while [[ ! -f "$server_settings" ]]; do
+    [[ "$stopping" == "true" ]] && exit 0
+    sleep "${RESTART_POLL_SECONDS:-2}" &
+    wait $! || true
+  done
+  log "Setup complete"
+fi
 
 # Supervise the server so the panel can request a fast restart (no SteamCMD
 # run) by creating ${restart_request}. Any other exit stops the container.

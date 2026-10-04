@@ -58,12 +58,13 @@ class Harness:
             return []
         return [line for line in self.log.read_text().splitlines() if line.startswith("start")]
 
-    def start(self):
+    def start(self, wait=True):
+        before = len(self.starts())
         # Own session so cleanup can kill the fake server child as well.
         self.proc = subprocess.Popen(["bash", str(ENTRYPOINT)], env=self.env, start_new_session=True,
                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        before = len(self.starts())
-        self.wait_for(lambda: len(self.starts()) > before)
+        if wait:
+            self.wait_for(lambda: len(self.starts()) > before)
 
     def wait_for(self, condition, timeout=10.0):
         deadline = time.monotonic() + timeout
@@ -215,3 +216,67 @@ def test_apply_env_updates_values_on_container_restart(harness):
     assert "RconPassword" not in ini and "RconPort" not in ini
     assert "Admins=10074AF86EBCB9A2" in ini
     h.stop()
+
+
+def write_panel_file(h, name, text):
+    (h.data / "panel").mkdir(parents=True, exist_ok=True)
+    (h.data / "panel" / name).write_text(text)
+
+
+def test_server_env_overrides_per_key_and_reverts(harness):
+    h = harness(SERVER_NAME="From env", MAX_PLAYERS="8", ADMIN_PASSWORD="env-admin")
+    write_panel_file(h, "server.env", "SERVER_NAME=From panel = with equals\nSERVER_PASSWORD=join\n")
+    h.start()
+    ini = h.game_ini
+    assert "ServerName=From panel = with equals" in ini
+    assert "ServerPassword=join" in ini
+    assert "AdminPassword=env-admin" in ini  # not in server.env: env value stays
+    assert "MaxSlots=8" in ini
+    effective = h.effective
+    assert "SERVER_NAME=From panel = with equals" in effective
+    assert "HAS_SERVER_PASSWORD=true" in effective and "HAS_ADMIN_PASSWORD=true" in effective
+    assert "=join" not in effective and "env-admin" not in effective  # no secrets
+
+    write_panel_file(h, "server.env", "SERVER_PASSWORD=\n")
+    (h.data / "panel" / "restart-request").touch()
+    h.wait_for(lambda: len(h.starts()) == 2)
+    h.wait_for(lambda: "ServerName=From env" in h.game_ini)
+    assert "ServerPassword=\n" in h.game_ini
+    h.stop()
+
+
+def test_rcon_password_from_panel_file(harness):
+    h = harness()
+    write_panel_file(h, "rcon.env", "RCON_PASSWORD=generated+/=\n")
+    h.start()
+    assert "RconPassword=generated+/=" in h.game_ini
+    assert "HAS_RCON=true" in h.effective
+    h.stop()
+
+
+def test_env_rcon_password_wins_over_file(harness):
+    h = harness(RCON_PASSWORD="from-env")
+    write_panel_file(h, "rcon.env", "RCON_PASSWORD=from-file\n")
+    h.start()
+    assert "RconPassword=from-env" in h.game_ini
+    h.stop()
+
+
+def test_waits_for_setup_before_first_start(harness):
+    h = harness(WAIT_FOR_SETUP="true")
+    h.start(wait=False)
+    time.sleep(0.6)
+    assert h.starts() == []
+    assert not (h.data / "config" / "Game.ini").exists()
+
+    write_panel_file(h, "server.env", "SERVER_NAME=After setup\nMAX_PLAYERS=12\n")
+    h.wait_for(lambda: len(h.starts()) == 1)
+    assert "ServerName=After setup" in h.game_ini and "MaxSlots=12" in h.game_ini
+    assert h.stop() == 0
+
+
+def test_stop_while_waiting_for_setup(harness):
+    h = harness(WAIT_FOR_SETUP="true")
+    h.start(wait=False)
+    time.sleep(0.3)
+    assert h.stop() == 0

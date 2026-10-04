@@ -124,6 +124,64 @@
 
     <section class="card">
       <div class="card-head">
+        <h2>Server settings</h2>
+        <span class="hint">Saved settings apply after a server restart. Leave a password field empty to keep it.</span>
+      </div>
+      <form id="server-settings-form" class="settings-grid">
+        <label class="field">
+          <span>Server name</span>
+          <input id="ss-name" type="text" maxlength="64" required>
+        </label>
+        <label class="field">
+          <span>Max players</span>
+          <input id="ss-max-players" type="number" min="1" max="100" required>
+        </label>
+        <div class="field">
+          <span>Join password</span>
+          <input id="ss-server-password" type="text" maxlength="64" autocomplete="off" aria-label="Join password">
+          <label class="check"><input id="ss-clear-server-password" type="checkbox"><span>No join password (open server)</span></label>
+        </div>
+        <div class="field">
+          <span>Admin password</span>
+          <input id="ss-admin-password" type="text" maxlength="64" autocomplete="off" aria-label="Admin password">
+          <label class="check"><input id="ss-clear-admin-password" type="checkbox"><span>No admin password</span></label>
+        </div>
+        <label class="check wide">
+          <input id="ss-advertise" type="checkbox">
+          <span>List the server publicly in the Mordhau server browser</span>
+        </label>
+        <div class="actions wide">
+          <button type="button" id="ss-save">Save</button>
+          <button type="button" id="ss-save-restart" class="primary">Save &amp; restart</button>
+        </div>
+      </form>
+
+      <details class="tool">
+        <summary class="tool-label">Change panel password</summary>
+        <p id="pp-env-note" class="hint" hidden>The panel password is set by <code>PANEL_PASSWORD</code> in the TrueNAS app config. Change it there, or remove it to manage the password here.</p>
+        <form id="panel-password-form" class="settings-grid">
+          <input type="text" name="username" value="admin" autocomplete="username" hidden>
+          <label class="field wide">
+            <span>Current password</span>
+            <input id="pp-current" type="password" autocomplete="current-password" required>
+          </label>
+          <label class="field">
+            <span>New password</span>
+            <input id="pp-new" type="password" minlength="8" autocomplete="new-password" required>
+          </label>
+          <label class="field">
+            <span>Repeat new password</span>
+            <input id="pp-new-2" type="password" minlength="8" autocomplete="new-password" required>
+          </label>
+          <div class="actions wide">
+            <button class="primary">Change password</button>
+          </div>
+        </form>
+      </details>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
         <h2>Console</h2>
         <span class="hint">Sends raw RCON commands.</span>
       </div>

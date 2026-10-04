@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mordhau Panel Setup</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="setup">
+    <form id="setup-form" class="card">
+      <div class="card-head">
+        <h1>Set up your Mordhau server</h1>
+        <span class="hint">You can change all of this later in the panel's Server settings.</span>
+      </div>
+
+      <label class="field">
+        <span>Setup code</span>
+        <input id="code" type="text" required autocomplete="off" spellcheck="false" placeholder="ABCD-EFGH" autofocus>
+        <small class="hint">In TrueNAS, open Apps → your Mordhau app → Logs and look for “Mordhau panel setup code” in the panel container's log.</small>
+      </label>
+
+      <fieldset class="group">
+        <legend>Panel login</legend>
+        <input type="text" name="username" value="admin" autocomplete="username" hidden>
+        <label class="field">
+          <span>Panel password</span>
+          <input id="panel-password" type="password" required minlength="8" autocomplete="new-password">
+        </label>
+        <label class="field">
+          <span>Repeat panel password</span>
+          <input id="panel-password-2" type="password" required minlength="8" autocomplete="new-password">
+        </label>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Game server</legend>
+        <label class="field">
+          <span>Server name</span>
+          <input id="server-name" type="text" required maxlength="64" value="Home Mordhau">
+        </label>
+        <label class="field">
+          <span>Join password <small class="hint">optional, leave empty for an open server</small></span>
+          <input id="server-password" type="text" maxlength="64" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>Admin password <small class="hint">optional, for <code>adminlogin</code> in the game console</small></span>
+          <input id="admin-password" type="text" maxlength="64" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>Max players</span>
+          <input id="max-players" type="number" min="1" max="100" value="16" required>
+        </label>
+        <label class="check">
+          <input id="advertise" type="checkbox">
+          <span>List the server publicly in the Mordhau server browser</span>
+        </label>
+      </fieldset>
+
+      <p id="setup-error" class="login-error" role="alert" hidden></p>
+      <div class="actions">
+        <button class="primary">Finish setup</button>
+      </div>
+      <p class="hint">The game server starts once setup is finished. Maps and rotation can be set in the panel afterwards.</p>
+    </form>
+  </main>
+  <script src="/static/setup.js"></script>
+</body>
+</html>
