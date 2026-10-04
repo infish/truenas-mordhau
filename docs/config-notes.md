@@ -30,6 +30,24 @@ Put it back after the config is updated:
 APPLY_ENV_ON_START: "false"
 ```
 
+## Map Rotation
+
+`DEFAULT_MAP` is the map the server boots into. `MAP_ROTATION` is a
+comma-separated list with no length limit:
+
+```yaml
+MAP_ROTATION: "FFA_ThePit,FFA_Camp,TDM_Camp,SKM_Grad"
+```
+
+The older `MAP_ROTATION_1`, `MAP_ROTATION_2`, ... variables still work (any
+number of them) when `MAP_ROTATION` is unset.
+
+Rotation and startup map saved from the panel are stored in
+`/data/panel/settings.env` and take precedence over these variables. Use the
+panel's "Use app defaults" button to go back to the app values. With
+`APPLY_ENV_ON_START: "false"`, an existing Game.ini keeps its rotation until
+the panel saves a new one.
+
 ## Tailscale-Only Server
 
 The default is private/unadvertised:

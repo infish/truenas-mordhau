@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mordhau Panel</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Mordhau Panel</h1>
+    <div id="status" class="status status-unknown">
+      <span class="dot"></span>
+      <span id="status-text">Checking server…</span>
+    </div>
+  </header>
+
+  <main>
+    <div id="notice" class="notice" hidden></div>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Change map now</h2>
+        <span class="hint">Switches immediately over RCON. Players stay connected.</span>
+      </div>
+      <div id="rcon-warning" class="warning" hidden>
+        RCON is not configured. Set <code>RCON_PASSWORD</code> on both the server and panel containers.
+      </div>
+      <div id="modes" class="chips" role="tablist"></div>
+      <div id="map-grid" class="map-grid"></div>
+      <details class="custom-map">
+        <summary>Other map name (mods)</summary>
+        <input id="custom-map" type="text" placeholder="e.g. FFA_MyModMap" autocomplete="off" spellcheck="false">
+      </details>
+      <div class="actions sticky-action">
+        <button id="change-btn" class="primary" disabled>Pick a map</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Rotation &amp; startup map</h2>
+        <span class="hint">Takes effect after a server restart (about a minute; players are disconnected).</span>
+      </div>
+      <p id="running-with" class="running-with"></p>
+      <div id="restart-pending" class="warning" hidden>Restart requested. Waiting for the server to come back…</div>
+
+      <label class="field">
+        <span>Startup map</span>
+        <select id="default-map"></select>
+      </label>
+
+      <div class="field">
+        <span>Rotation</span>
+        <ol id="rotation" class="rotation"></ol>
+        <div class="add-row">
+          <select id="add-mode" aria-label="Mode"></select>
+          <select id="add-map" aria-label="Map"></select>
+          <button id="add-btn">Add</button>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="reset-btn" class="ghost" title="Delete panel settings and use the TrueNAS app values again">Use app defaults</button>
+        <button id="save-btn">Save</button>
+        <button id="save-restart-btn" class="primary">Save &amp; restart</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Console</h2>
+        <span class="hint">Sends raw RCON commands.</span>
+      </div>
+      <div class="chips">
+        <button class="chip" data-command="help">help</button>
+        <button class="chip" data-command="playerlist">playerlist</button>
+      </div>
+      <form id="console-form" class="console-form">
+        <input id="console-input" type="text" placeholder="Command" autocomplete="off" spellcheck="false">
+        <button class="primary">Send</button>
+      </form>
+      <pre id="console-output" class="console-output" aria-live="polite"></pre>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

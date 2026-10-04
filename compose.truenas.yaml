@@ -5,6 +5,7 @@ services:
     image: docker.io/infish1997/mordhau-server:latest
     container_name: mordhau
     restart: unless-stopped
+    stop_grace_period: 45s
     environment:
       TZ: Europe/Prague
 
@@ -20,13 +21,15 @@ services:
       SERVER_NAME: "Home Mordhau"
       SERVER_PASSWORD: ""
       ADMIN_PASSWORD: "CHANGE_ME_LONG_RANDOM_PASSWORD"
-      RCON_PASSWORD: ""
+      # Required by the panel. Use the same value in the panel service below.
+      RCON_PASSWORD: "CHANGE_ME_RCON_PASSWORD"
       MAX_PLAYERS: "16"
       ADVERTISE_SERVER: "false"
+      # Defaults only: rotation saved from the panel takes precedence.
+      # MAP_ROTATION is comma-separated with no length limit; the older
+      # MAP_ROTATION_1, MAP_ROTATION_2, ... form also still works.
       DEFAULT_MAP: "FFA_ThePit"
-      MAP_ROTATION_1: "FFA_ThePit"
-      MAP_ROTATION_2: "FFA_Camp"
-      MAP_ROTATION_3: "TDM_Camp"
+      MAP_ROTATION: "FFA_ThePit,FFA_Camp,TDM_Camp"
 
       # Mordhau ports.
       GAME_PORT: "37000"
@@ -65,5 +68,29 @@ services:
         published: 37003
         protocol: udp
 
+    security_opt:
+      - no-new-privileges:true
+
+  panel:
+    image: docker.io/infish1997/mordhau-panel:latest
+    container_name: mordhau-panel
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Prague
+      PANEL_USERNAME: "admin"
+      PANEL_PASSWORD: "CHANGE_ME_PANEL_PASSWORD"
+      RCON_PASSWORD: "CHANGE_ME_RCON_PASSWORD"
+      RCON_HOST: "server"
+      RCON_PORT: "37001"
+      QUERY_HOST: "server"
+      QUERY_PORT: "37003"
+    volumes:
+      - type: bind
+        source: /mnt/Apps/MordhauServer
+        target: /data
+    ports:
+      - target: 8080
+        published: 37080
+        protocol: tcp
     security_opt:
       - no-new-privileges:true

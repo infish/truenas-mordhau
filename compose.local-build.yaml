@@ -3,7 +3,7 @@ name: mordhau-local
 services:
   server:
     build:
-      context: ./image
+      context: ./server
     image: mordhau-server:local
     container_name: mordhau-local
     restart: unless-stopped
@@ -15,13 +15,11 @@ services:
       SERVER_NAME: "Local Mordhau"
       SERVER_PASSWORD: ""
       ADMIN_PASSWORD: "CHANGE_ME_LONG_RANDOM_PASSWORD"
-      RCON_PASSWORD: ""
+      RCON_PASSWORD: "local-rcon"
       MAX_PLAYERS: "16"
       ADVERTISE_SERVER: "false"
       DEFAULT_MAP: "FFA_ThePit"
-      MAP_ROTATION_1: "FFA_ThePit"
-      MAP_ROTATION_2: "FFA_Camp"
-      MAP_ROTATION_3: "TDM_Camp"
+      MAP_ROTATION: "FFA_ThePit,FFA_Camp,TDM_Camp"
       GAME_PORT: "37000"
       BEACON_PORT: "37002"
       QUERY_PORT: "37003"
@@ -39,3 +37,17 @@ services:
       - "37003:37003/udp"
     security_opt:
       - no-new-privileges:true
+
+  panel:
+    build:
+      context: ./panel
+    image: mordhau-panel:local
+    container_name: mordhau-panel-local
+    restart: unless-stopped
+    environment:
+      PANEL_PASSWORD: "local-panel"
+      RCON_PASSWORD: "local-rcon"
+    volumes:
+      - ./data:/data
+    ports:
+      - "37080:8080"

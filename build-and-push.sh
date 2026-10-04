@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
+# Builds the server and panel images and pushes them unless --no-push is given.
+# Usage: ./build-and-push.sh [tag] [--no-push]
 set -euo pipefail
 
-if [[ $# -lt 1 ]]; then
-  echo "Usage: $0 docker.io/infish1997/mordhau-server:latest [linux/amd64] [--no-push]" >&2
-  exit 2
-fi
-
-image="$1"
-platform="${2:-linux/amd64}"
-no_push="${3:-}"
+tag="${1:-latest}"
+no_push="${2:-}"
+registry="${REGISTRY:-docker.io/infish1997}"
+platform="${PLATFORM:-linux/amd64}"
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-docker build --platform "$platform" -t "$image" "$script_dir/image"
+docker build --platform "$platform" -t "${registry}/mordhau-server:${tag}" "$script_dir/server"
+docker build --platform "$platform" -t "${registry}/mordhau-panel:${tag}" "$script_dir/panel"
 
 if [[ "$no_push" != "--no-push" ]]; then
-  docker push "$image"
+  docker push "${registry}/mordhau-server:${tag}"
+  docker push "${registry}/mordhau-panel:${tag}"
 fi
 
-echo "Image ready: $image"
-
+echo "Images ready: ${registry}/mordhau-server:${tag} ${registry}/mordhau-panel:${tag}"

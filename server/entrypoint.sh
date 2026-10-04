@@ -20,6 +20,109 @@ ini_bool() {
   fi
 }
 
+valid_map() {
+  [[ "${1:-}" =~ ^[A-Za-z0-9_]+$ ]]
+}
+
+# Appends comma-separated map names to effective_rotation, skipping invalid ones.
+add_rotation_maps() {
+  local item
+  local -a items
+  IFS=',' read -ra items <<< "$1"
+  for item in "${items[@]}"; do
+    item="${item//[[:space:]]/}"
+    [[ -z "$item" ]] && continue
+    if valid_map "$item"; then
+      effective_rotation+=("$item")
+    else
+      log "Ignoring invalid map name in rotation: ${item}"
+    fi
+  done
+}
+
+# Resolves the startup map and rotation. Precedence: panel settings file,
+# then MAP_ROTATION (comma-separated), then MAP_ROTATION_1..N, then defaults.
+load_map_settings() {
+  local i var key value
+  effective_default_map="${DEFAULT_MAP:-FFA_ThePit}"
+  effective_rotation=()
+
+  if [[ -n "${MAP_ROTATION:-}" ]]; then
+    add_rotation_maps "$MAP_ROTATION"
+  else
+    for i in $(seq 1 100); do
+      var="MAP_ROTATION_${i}"
+      [[ -n "${!var:-}" ]] && add_rotation_maps "${!var}"
+    done
+  fi
+
+  if [[ -f "$panel_settings" ]]; then
+    local -a panel_rotation=()
+    local panel_has_rotation="false"
+    while IFS='=' read -r key value || [[ -n "$key" ]]; do
+      value="${value%$'\r'}"
+      case "$key" in
+        DEFAULT_MAP)
+          if valid_map "$value"; then
+            effective_default_map="$value"
+          else
+            log "Ignoring invalid DEFAULT_MAP in ${panel_settings}: ${value}"
+          fi
+          ;;
+        MAP_ROTATION)
+          panel_has_rotation="true"
+          local -a saved_rotation=("${effective_rotation[@]}")
+          effective_rotation=()
+          add_rotation_maps "$value"
+          panel_rotation=("${effective_rotation[@]}")
+          effective_rotation=("${saved_rotation[@]}")
+          ;;
+      esac
+    done < "$panel_settings"
+    if [[ "$panel_has_rotation" == "true" && ${#panel_rotation[@]} -gt 0 ]]; then
+      effective_rotation=("${panel_rotation[@]}")
+    fi
+  fi
+
+  if [[ ${#effective_rotation[@]} -eq 0 ]]; then
+    effective_rotation=(FFA_ThePit FFA_Camp TDM_Camp)
+  fi
+
+  if ! valid_map "$effective_default_map"; then
+    log "Invalid DEFAULT_MAP '${effective_default_map}', using ${effective_rotation[0]}"
+    effective_default_map="${effective_rotation[0]}"
+  fi
+}
+
+# Replaces every MapRotation line in Game.ini with the effective rotation,
+# keeping the rest of the file (including hand edits) intact.
+apply_rotation() {
+  local game_ini="$1"
+  local tmp="${game_ini}.tmp"
+  ROTATION_LINES="$(printf 'MapRotation=%s\n' "${effective_rotation[@]}")" \
+    awk '
+      BEGIN { section = "[/Script/Mordhau.MordhauGameMode]"; rot = ENVIRON["ROTATION_LINES"] }
+      { line = $0; sub(/\r$/, "", line) }
+      line ~ /^MapRotation=/ { next }
+      { print }
+      line == section && !found { print rot; found = 1 }
+      END { if (!found) { print ""; print section; print rot } }
+    ' "$game_ini" > "$tmp"
+  mv "$tmp" "$game_ini"
+}
+
+write_effective_settings() {
+  local tmp="${effective_settings}.tmp"
+  local joined
+  joined="$(IFS=','; printf '%s' "${effective_rotation[*]}")"
+  {
+    printf 'DEFAULT_MAP=%s\n' "$effective_default_map"
+    printf 'MAP_ROTATION=%s\n' "$joined"
+    printf 'STARTED_AT=%s\n' "$(date +%s)"
+  } > "$tmp"
+  mv "$tmp" "$effective_settings"
+}
+
 write_configs() {
   local game_ini="$1"
   local engine_ini="$2"
@@ -50,10 +153,8 @@ EOF
 MaxPlayers=${MAX_PLAYERS:-16}
 
 [/Script/Mordhau.MordhauGameMode]
-MapRotation=${MAP_ROTATION_1:-FFA_ThePit}
-MapRotation=${MAP_ROTATION_2:-FFA_Camp}
-MapRotation=${MAP_ROTATION_3:-TDM_Camp}
 EOF
+  printf 'MapRotation=%s\n' "${effective_rotation[@]}" >> "$game_ini"
 
   cat > "$engine_ini" <<EOF
 [/Script/OnlineSubsystemUtils.IpNetDriver]
@@ -86,9 +187,12 @@ engine_ini="${ENGINE_INI:-${config_dir}/Engine.ini}"
 game_port="${GAME_PORT:-37000}"
 beacon_port="${BEACON_PORT:-37002}"
 query_port="${QUERY_PORT:-37003}"
-default_map="${DEFAULT_MAP:-FFA_ThePit}"
+panel_dir="${PANEL_DIR:-/data/panel}"
+panel_settings="${panel_dir}/settings.env"
+effective_settings="${panel_dir}/effective.env"
+restart_request="${panel_dir}/restart-request"
 
-mkdir -p "$server_dir" "$config_dir" "$steamcmd_cache_dir" "$log_dir"
+mkdir -p "$server_dir" "$config_dir" "$steamcmd_cache_dir" "$log_dir" "$panel_dir"
 mkdir -p "$steamcmd_cache_dir/Steam" "${HOME}/.steam/sdk32" "${HOME}/.steam/sdk64"
 
 if [[ ! -e "${HOME}/Steam" ]]; then
@@ -155,16 +259,6 @@ if [[ ! -e "$saved_log_dir" ]]; then
   ln -s "$log_dir" "$saved_log_dir"
 fi
 
-first_config="false"
-if [[ ! -f "$game_ini" || ! -f "$engine_ini" ]]; then
-  first_config="true"
-fi
-
-if [[ "$first_config" == "true" ]] || truthy "${APPLY_ENV_ON_START:-false}"; then
-  log "Writing environment-backed Mordhau config"
-  write_configs "$game_ini" "$engine_ini"
-fi
-
 server_binary="${server_dir}/Mordhau/Binaries/Linux/MordhauServer-Linux-Shipping"
 if [[ ! -x "$server_binary" ]]; then
   log "Server binary was not found at ${server_binary}"
@@ -172,19 +266,102 @@ if [[ ! -x "$server_binary" ]]; then
   exit 1
 fi
 
-log "Starting server"
-log "Map: ${default_map}"
-log "Game.ini: ${game_ini}"
-log "Engine.ini: ${engine_ini}"
-log "Logs: ${log_dir}"
+configure_server() {
+  load_map_settings
+
+  if [[ ! -f "$game_ini" || ! -f "$engine_ini" ]] || truthy "${APPLY_ENV_ON_START:-false}"; then
+    log "Writing environment-backed Mordhau config"
+    write_configs "$game_ini" "$engine_ini"
+  elif [[ -f "$panel_settings" ]]; then
+    log "Applying panel map rotation to existing Game.ini"
+    apply_rotation "$game_ini"
+  fi
+
+  write_effective_settings
+}
+
+server_pid=""
+stopping="false"
+
+on_stop_signal() {
+  stopping="true"
+  if [[ -n "$server_pid" ]]; then
+    kill -TERM "$server_pid" 2>/dev/null || true
+  fi
+}
+trap on_stop_signal TERM INT
+
+# Waits for the server to exit; escalates to SIGKILL after the grace period.
+stop_server() {
+  local waited=0
+  kill -TERM "$server_pid" 2>/dev/null || true
+  while kill -0 "$server_pid" 2>/dev/null; do
+    if (( waited >= ${RESTART_GRACE_SECONDS:-30} * 2 )); then
+      log "Server did not stop in time, killing it"
+      kill -KILL "$server_pid" 2>/dev/null || true
+      break
+    fi
+    sleep 0.5
+    waited=$((waited + 1))
+  done
+}
 
 cd "$(dirname "$server_binary")"
-exec ./MordhauServer-Linux-Shipping \
-  Mordhau "$default_map" \
-  -MultiHome=0.0.0.0 \
-  -Port="$game_port" \
-  -BeaconPort="$beacon_port" \
-  -QueryPort="$query_port" \
-  -GAMEINI="$game_ini" \
-  -ENGINEINI="$engine_ini" \
-  -log
+rm -f "$restart_request"
+
+# Supervise the server so the panel can request a fast restart (no SteamCMD
+# run) by creating ${restart_request}. Any other exit stops the container.
+while true; do
+  configure_server
+
+  log "Starting server"
+  log "Map: ${effective_default_map}"
+  log "Rotation: ${effective_rotation[*]}"
+  log "Game.ini: ${game_ini}"
+  log "Engine.ini: ${engine_ini}"
+  log "Logs: ${log_dir}"
+
+  ./MordhauServer-Linux-Shipping \
+    Mordhau "$effective_default_map" \
+    -MultiHome=0.0.0.0 \
+    -Port="$game_port" \
+    -BeaconPort="$beacon_port" \
+    -QueryPort="$query_port" \
+    -GAMEINI="$game_ini" \
+    -ENGINEINI="$engine_ini" \
+    -log &
+  server_pid=$!
+  if [[ "$stopping" == "true" ]]; then
+    stop_server
+  fi
+
+  restarting="false"
+  while kill -0 "$server_pid" 2>/dev/null && [[ "$stopping" == "false" ]]; do
+    if [[ -e "$restart_request" ]]; then
+      rm -f "$restart_request"
+      log "Restart requested by panel"
+      restarting="true"
+      stop_server
+      break
+    fi
+    sleep "${RESTART_POLL_SECONDS:-2}" &
+    wait $! || true
+  done
+
+  status=0
+  while true; do
+    wait "$server_pid" || status=$?
+    kill -0 "$server_pid" 2>/dev/null || break
+  done
+  server_pid=""
+
+  if [[ "$stopping" == "true" ]]; then
+    log "Server stopped"
+    exit 0
+  fi
+  if [[ "$restarting" == "true" ]]; then
+    continue
+  fi
+  log "Server exited with status ${status}"
+  exit "$status"
+done

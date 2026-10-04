@@ -1,114 +1,97 @@
-# TrueNAS SCALE Mordhau App
+# Mordhau Server for TrueNAS
 
-This bundle gives you a Dockerized Mordhau dedicated server for TrueNAS SCALE/TrueNAS Community Edition Apps. It is designed for the Custom App "Install via YAML" flow, not a VM.
+A Dockerized Mordhau dedicated server for TrueNAS SCALE Custom Apps, plus a
+small web panel for changing maps without touching the console or config.
 
-It follows the same working pattern as the 7 Days To Die app:
+- `server/` – SteamCMD-based server image (`infish1997/mordhau-server`).
+  Installs/updates Mordhau Dedicated Server (app `629800`), writes `Game.ini`
+  and `Engine.ini` from environment variables, and supervises the server
+  process so the panel can restart it.
+- `panel/` – web panel image (`infish1997/mordhau-panel`): live map changes
+  over RCON, rotation and startup map editor, and a raw RCON console.
+- `compose.truenas.yaml` – paste into TrueNAS: Apps > Discover Apps >
+  Custom App > Install via YAML.
+- `compose.local-build.yaml` – builds and runs both images locally.
 
-- Installs/updates the Mordhau Dedicated Server with SteamCMD app `629800`.
-- Stores server files, SteamCMD cache, config, and logs under `/data`.
-- Creates a first-run `Game.ini` and `Engine.ini` under `/data/config`.
-- Creates Steam `sdk32` and `sdk64` library links so the game server can initialize Steam/EOS networking.
-- Publishes the Mordhau game, beacon, query, and optional RCON ports.
+## How maps and modes work
 
-## Epic Launcher Clients
+The game mode is part of the map name: `FFA_Camp` is Camp in free-for-all,
+`TDM_Camp` is the same map in team deathmatch. Prefixes: `FFA` free-for-all,
+`TDM` team deathmatch, `SKM` skirmish, `FL` frontline, `INV` invasion,
+`HRD` horde, `BR` battle royale, `DU` duel. The panel lists every map it
+finds in the installed server's `.pak` files, grouped by prefix.
 
-You can launch Mordhau from Epic. The dedicated server still comes from SteamCMD. Mordhau's own hosting guide says there is no Epic Games Store equivalent for hosting, but SteamCMD servers work for players on both Steam and Epic.
+- **Change map now** sends `changelevel <map>` over RCON. Instant, nobody
+  is disconnected.
+- **Rotation & startup map** writes `/data/panel/settings.env`. The server
+  applies it on its next start; "Save & restart" asks the server container's
+  supervisor to restart the game process right away (no SteamCMD update, about
+  a minute of downtime). Saved settings override `DEFAULT_MAP` and
+  `MAP_ROTATION` from the app config.
+- **Console** sends any RCON command, e.g. `help` or `playerlist`.
 
-## Files
+## Setup
 
-- `compose.truenas.yaml` - paste into TrueNAS Apps > Discover Apps > Custom App > Install via YAML.
-- `compose.local-build.yaml` - optional local test compose that builds the image from `image/`.
-- `image/Dockerfile` - SteamCMD-based image.
-- `image/entrypoint.sh` - install/update/configure/run logic.
-- `build-and-push.ps1` and `build-and-push.sh` - helper scripts to build and push the image.
-- `examples/truenas-wizard-fields.md` - guided Custom App wizard notes.
-- `examples/config-notes.md` - Mordhau config and connection notes.
-
-## Quick Start
-
-1. In Docker Hub, create a public repository:
-
-   ```text
-   mordhau-server
-   ```
-
-2. Build and push the image from this folder:
-
-   PowerShell:
-
-   ```powershell
-   .\build-and-push.ps1 -Image docker.io/infish1997/mordhau-server:latest
-   ```
-
-   Bash:
+1. Build and push both images (needs `docker login` first):
 
    ```bash
-   ./build-and-push.sh docker.io/infish1997/mordhau-server:latest
+   ./build-and-push.sh latest
    ```
 
-3. In TrueNAS, create a dataset for the server, for example:
+2. Create the dataset `/mnt/Apps/MordhauServer` with write access for the
+   `apps` user (UID/GID `568`).
 
-   ```text
-   /mnt/Apps/MordhauServer
-   ```
+3. Edit `compose.truenas.yaml`: replace every `CHANGE_ME_*` value. Use the
+   same `RCON_PASSWORD` in both services. `PANEL_PASSWORD` is the login for
+   the panel (username `admin` by default).
 
-   Give the `apps` user/group ownership or write access. In numeric terms, that is usually UID `568` and GID `568`.
+4. Install via YAML in TrueNAS. The first start downloads the server, which
+   takes a few minutes.
 
-4. Edit `compose.truenas.yaml` if your dataset path is different:
+5. Open the panel at `http://<truenas-ip>:37080`.
 
-   ```yaml
-   source: /mnt/Apps/MordhauServer
-   ```
-
-5. Install in TrueNAS:
-
-   ```text
-   Apps > Discover Apps > Custom App > more_vert > Install via YAML
-   ```
-
-   Paste the edited compose YAML and install.
-
-6. First startup downloads the dedicated server. It can take a few minutes.
-
-## Connecting Over Tailscale
-
-For private access, the default config does not advertise the server:
-
-```yaml
-ADVERTISE_SERVER: "false"
-```
-
-Connect directly from Mordhau using your TrueNAS Tailscale IP and the game port:
-
-```text
-open <truenas-tailscale-ip>:37000
-```
-
-No router port forwarding is needed when every player joins from your tailnet.
+The panel uses HTTP Basic auth without TLS, so keep port 37080 on your LAN or
+tailnet and do not forward it from the internet.
 
 ## Ports
 
-The compose publishes:
+| Port | Use |
+| --- | --- |
+| 37000 tcp/udp | game |
+| 37001 tcp/udp | RCON (enabled when `RCON_PASSWORD` is set) |
+| 37002 tcp/udp | beacon |
+| 37003 tcp/udp | Steam query (the panel reads the live map and player count here) |
+| 37080 tcp | panel |
 
-- `37000/tcp` and `37000/udp` - game port
-- `37001/tcp` and `37001/udp` - adjacent game/RCON-friendly port
-- `37002/tcp` and `37002/udp` - beacon port
-- `37003/tcp` and `37003/udp` - query port
+## Connecting over Tailscale
 
-RCON is only configured if you set `RCON_PASSWORD`.
+With `ADVERTISE_SERVER: "false"` the server is not listed publicly. Connect
+from the Mordhau console with `open <truenas-tailscale-ip>:37000`.
 
 ## Updating
 
-Restarting the app runs SteamCMD again. With `UPDATE_ON_START: "true"`, it applies available Mordhau dedicated server updates before starting. Set `STEAM_VALIDATE: "true"` when you want SteamCMD to validate files.
+Restarting the app runs SteamCMD again when `UPDATE_ON_START` is `"true"`.
+Set `STEAM_VALIDATE: "true"` to have SteamCMD validate files. A restart from
+the panel skips SteamCMD.
+
+## Development
+
+```bash
+uv sync
+uv run pytest
+```
+
+After changing panel dependencies, regenerate the hashed requirements the
+image installs:
+
+```bash
+uv export --no-dev --no-emit-project -o panel/requirements.txt
+```
 
 ## Backup
 
-Snapshot or back up the dataset mounted at `/data`. The most important paths are:
+Snapshot the dataset mounted at `/data`. The important paths are
+`config/Game.ini`, `config/Engine.ini`, `panel/settings.env`,
+`server/Mordhau/Saved`, and `logs`.
 
-```text
-config/Game.ini
-config/Engine.ini
-server/Mordhau/Saved
-logs
-steamcmd
-```
+See `docs/config-notes.md` for config details.
