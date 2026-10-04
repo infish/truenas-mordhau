@@ -66,10 +66,12 @@ def test_reads_legacy_inline_index(tmp_path):
 
 
 def test_groups_playable_maps_by_mode():
-    names = {"FFA_Camp", "TDM_Camp", "FFA_ThePit", "Camp", "Grad_Brawl", "SC_CampTutorial", "MainMenu", "TF_Arena"}
+    names = {"FFA_Camp", "TDM_Camp", "FFA_ThePit", "Camp", "Grad_Brawl", "SC_CampTutorial", "MainMenu", "TF_Arena",
+             "DIH_Grad"}
     assert group_by_mode(names) == [
         {"prefix": "FFA", "label": "Free-for-all", "maps": ["FFA_Camp", "FFA_ThePit"]},
         {"prefix": "TDM", "label": "Team deathmatch", "maps": ["TDM_Camp"]},
+        {"prefix": "DIH", "label": "Demon Invasion", "maps": ["DIH_Grad"]},
         {"prefix": "TF", "label": "TF", "maps": ["TF_Arena"]},
     ]
 

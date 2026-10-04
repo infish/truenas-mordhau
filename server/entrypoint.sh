@@ -377,6 +377,20 @@ stop_server() {
 cd "$(dirname "$server_binary")"
 rm -f "$restart_request"
 
+# Without RCON_PASSWORD the panel generates one at startup; give it a moment
+# so the server does not come up without RCON when both start together.
+if [[ -z "${RCON_PASSWORD:-}" && ! -f "$rcon_settings" ]]; then
+  log "Waiting up to ${RCON_WAIT_SECONDS:-30}s for the panel to create ${rcon_settings}"
+  rcon_waited=0
+  while [[ ! -f "$rcon_settings" ]] && (( rcon_waited < ${RCON_WAIT_SECONDS:-30} )); do
+    [[ "$stopping" == "true" ]] && exit 0
+    sleep 1 &
+    wait $! || true
+    rcon_waited=$((rcon_waited + 1))
+  done
+  [[ -f "$rcon_settings" ]] || log "No RCON password: the panel will not be able to control the server"
+fi
+
 # New installs set WAIT_FOR_SETUP so the server never runs with defaults:
 # the server files download first, then this waits for the panel's setup.
 if truthy "${WAIT_FOR_SETUP:-false}" && [[ ! -f "$server_settings" ]]; then

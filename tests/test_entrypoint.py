@@ -40,6 +40,7 @@ class Harness:
             "PANEL_DIR": str(self.data / "panel"),
             "UPDATE_ON_START": "false",
             "RESTART_POLL_SECONDS": "0.1",
+            "RCON_WAIT_SECONDS": "0",
             "FAKE_LOG": str(self.log),
             **env,
         }
@@ -280,3 +281,21 @@ def test_stop_while_waiting_for_setup(harness):
     h.start(wait=False)
     time.sleep(0.3)
     assert h.stop() == 0
+
+
+def test_waits_for_panel_rcon_file(harness):
+    h = harness(RCON_WAIT_SECONDS="10")
+    h.start(wait=False)
+    time.sleep(0.5)
+    assert h.starts() == []
+    write_panel_file(h, "rcon.env", "RCON_PASSWORD=late\n")
+    h.wait_for(lambda: len(h.starts()) == 1)
+    assert "RconPassword=late" in h.game_ini
+    h.stop()
+
+
+def test_starts_without_rcon_after_timeout(harness):
+    h = harness(RCON_WAIT_SECONDS="1")
+    h.start()
+    assert "RconPassword" not in h.game_ini
+    h.stop()

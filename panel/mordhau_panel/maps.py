@@ -19,6 +19,8 @@ MODE_LABELS = {
     "HRD": "Horde",
     "BR": "Battle royale",
     "DU": "Duel",
+    # Demon Invasion horde maps; their assets sit next to BP_HolyGun_DIH.
+    "DIH": "Demon Invasion",
 }
 MODE_ORDER = list(MODE_LABELS)
 # Tutorial/scenario levels are not meant to be hosted.

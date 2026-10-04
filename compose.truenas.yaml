@@ -1,3 +1,6 @@
+# Mordhau dedicated server + web panel for TrueNAS.
+# Install: Apps > Discover Apps > Custom App (⋮ menu) > Install via YAML.
+# Full guide: https://github.com/infish/truenas-mordhau/blob/main/docs/INSTALL.md
 name: mordhau
 
 services:
@@ -7,6 +10,7 @@ services:
     restart: unless-stopped
     stop_grace_period: 45s
     environment:
+      # Your time zone, e.g. Europe/London or America/New_York.
       TZ: Europe/Prague
 
       # Steam/install behavior.
@@ -21,7 +25,7 @@ services:
       # defaults; values saved in the panel take precedence.)
       WAIT_FOR_SETUP: "true"
 
-      # Mordhau ports.
+      # Mordhau ports inside the container.
       GAME_PORT: "37000"
       BEACON_PORT: "37002"
       QUERY_PORT: "37003"
@@ -29,21 +33,18 @@ services:
 
     volumes:
       - type: bind
+        # CHANGE THIS to your dataset path (the same in both services).
         source: /mnt/Apps/MordhauServer
         target: /data
 
+    # The RCON port (37001) is not published: the panel reaches it over the
+    # app's internal network, so it never needs to be open on your LAN.
     ports:
       - target: 37000
         published: 37000
         protocol: tcp
       - target: 37000
         published: 37000
-        protocol: udp
-      - target: 37001
-        published: 37001
-        protocol: tcp
-      - target: 37001
-        published: 37001
         protocol: udp
       - target: 37002
         published: 37002
@@ -72,6 +73,7 @@ services:
       # PANEL_PASSWORD or RCON_PASSWORD here overrides that.
     volumes:
       - type: bind
+        # CHANGE THIS to your dataset path (the same in both services).
         source: /mnt/Apps/MordhauServer
         target: /data
     ports:
