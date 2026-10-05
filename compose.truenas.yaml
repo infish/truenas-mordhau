@@ -3,6 +3,15 @@
 # Full guide: https://github.com/infish/truenas-mordhau/blob/main/docs/INSTALL.md
 name: mordhau
 
+# Adds a "Web UI" button for the panel to the app in TrueNAS. TrueNAS replaces
+# 0.0.0.0 with the address you use to open TrueNAS.
+x-portals:
+  - name: Web UI
+    scheme: http
+    host: 0.0.0.0
+    port: 37080
+    path: /
+
 services:
   server:
     image: docker.io/infish1997/mordhau-server:latest

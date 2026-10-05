@@ -84,8 +84,9 @@ on your network.
 
 ## Step 4: Finish setup in the panel
 
-1. In your browser, open `http://<your-truenas-ip>:37080`,
-   for example `http://192.168.1.50:37080`.
+1. Open the panel: in TrueNAS, **Apps** → **mordhau** → **Web UI**. (Or type
+   `http://<your-truenas-ip>:37080` in your browser, for example
+   `http://192.168.1.50:37080`.)
 2. Fill in the setup screen:
 
    ![Setup screen](images/setup.jpg)

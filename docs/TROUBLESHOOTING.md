@@ -118,4 +118,5 @@ missing admins once from the panel.
 
 Another app uses one of the ports (37000, 37002, 37003, 37080). Change the
 `published:` number of that port in the YAML, e.g. `published: 37081` for the
-panel, and open the panel on the new port.
+panel, and open the panel on the new port. If you move the panel, also change
+`port: 37080` under `x-portals` at the top, so the **Web UI** button follows.
