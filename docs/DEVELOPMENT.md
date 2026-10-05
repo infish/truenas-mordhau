@@ -54,6 +54,8 @@ panel/                  panel image
 tools/
   import_map_icons.py   standalone (stdlib only) importer for map pictures:
                         reads .pak files, decodes DXT1/DXT5, writes PNG, uploads
+  truenas-set-app-icon.py  run with sudo on TrueNAS: sets the app's icon in
+                        app_configs/<app>/metadata.yaml, then app.metadata_generate
 tests/                  pytest suite (fakes for RCON and A2S, entrypoint harness)
 compose.truenas.yaml    install file for TrueNAS
 compose.local-build.yaml builds both images locally
@@ -106,6 +108,14 @@ listed in several metadata assets take the most specific one (DIH and Legacy
 overrides); unlisted levels match a thumbnail by name, then by map folder.
 The 512x264 thumbnails are halved and uploaded as PNG with a manifest to
 `PUT /api/map-icons/<file>` and `PUT /api/map-icons`.
+
+## TrueNAS app metadata
+
+For custom (YAML) apps, TrueNAS's middleware writes `metadata.yaml` from a
+fixed template at install time and reads `x-portals` from the YAML only then;
+edits regenerate neither. That is why the Web UI button needs `x-portals` in
+the YAML before the app is created, and why the icon is set afterwards by
+`tools/truenas-set-app-icon.py` (which then survives edits).
 
 ## Useful facts about Mordhau's RCON
 

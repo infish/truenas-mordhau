@@ -118,6 +118,18 @@ days on each device.
   **Save & restart**.
 - **Optional, map pictures:** import the official map pictures from your
   game, see [Map pictures](PANEL.md#map-pictures).
+- **Optional, app icon:** TrueNAS shows YAML apps without an icon, and the
+  YAML cannot set one. To give the app Mordhau's icon, open **System** →
+  **Shell** in TrueNAS and run:
+
+  ```bash
+  curl -fsSLO https://raw.githubusercontent.com/infish/truenas-mordhau/main/tools/truenas-set-app-icon.py
+  sudo python3 truenas-set-app-icon.py
+  ```
+
+  It finds the Mordhau app by itself and keeps a backup of what it changes.
+  The icon stays when you edit or update the app; run it again only if you
+  delete and reinstall the app.
 
 ## Updating
 
