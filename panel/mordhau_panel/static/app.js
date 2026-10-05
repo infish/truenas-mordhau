@@ -8,6 +8,7 @@ const state = {
   rotation: [],
   defaultMap: null,
   dirty: false,       // rotation editor has unsaved edits
+  icons: { version: 0, icons: {} }, // map pictures from tools/import_map_icons.py
   restartPending: false,
 };
 
@@ -65,6 +66,24 @@ function isLiveMap(map) {
   return map === state.liveMap || looseName(shortName(map)) === looseName(state.liveMap);
 }
 
+function iconUrl(map) {
+  const file = state.icons.icons[map] || state.icons.icons["*"];
+  return file ? `/api/map-icons/${encodeURIComponent(file)}?v=${state.icons.version}` : null;
+}
+
+function mapIcon(map, className) {
+  const url = iconUrl(map);
+  return url ? el("img", { src: url, alt: "", loading: "lazy", className, draggable: false }) : null;
+}
+
+async function loadIcons() {
+  try {
+    state.icons = await api("GET", "/api/map-icons");
+  } catch {
+    state.icons = { version: 0, icons: {} };
+  }
+}
+
 function allMaps() {
   return state.modes.flatMap((mode) => mode.maps);
 }
@@ -80,6 +99,7 @@ async function refreshStatus() {
     return;
   }
   const server = data.server;
+  const previousLiveMap = state.liveMap;
   if (server.online) {
     state.liveMap = server.map;
     setStatus("online", `${server.name} · ${server.map} · ${server.players}/${server.max_players} players`);
@@ -90,7 +110,9 @@ async function refreshStatus() {
   $("rcon-warning").hidden = data.rcon_configured;
   state.rconConfigured = data.rcon_configured;
   applySettings(data.settings);
-  renderMapGrid();
+  // Rebuilding the grid every refresh would reload its pictures; only the
+  // "live" marker depends on the status.
+  if (state.liveMap !== previousLiveMap) renderMapGrid();
 }
 
 function setStatus(kind, text) {
@@ -174,7 +196,9 @@ function renderMapGrid() {
     return;
   }
   grid.replaceChildren(...mode.maps.map((map) => {
-    const button = el("button", { textContent: shortName(map), title: map });
+    const icon = mapIcon(map, "map-icon");
+    const button = el("button", { title: map, className: icon ? "has-icon" : "" },
+      [icon, el("span", { className: "map-name", textContent: shortName(map) })].filter(Boolean));
     button.setAttribute("aria-pressed", String(map === state.selectedMap));
     if (isLiveMap(map)) button.classList.add("current");
     button.addEventListener("click", () => {
@@ -230,7 +254,8 @@ function renderRotation() {
     up.addEventListener("click", () => { swap(index, index - 1); });
     down.addEventListener("click", () => { swap(index, index + 1); });
     remove.addEventListener("click", () => { state.rotation.splice(index, 1); markDirty(); });
-    return el("li", {}, [el("span", { className: "name", textContent: map }), up, down, remove]);
+    const children = [mapIcon(map, "rotation-icon"), el("span", { className: "name", textContent: map }), up, down, remove];
+    return el("li", {}, children.filter(Boolean));
   }));
 
   const select = $("default-map");
@@ -629,7 +654,7 @@ function tick() {
   refreshStatus().then(refreshPlayers);
 }
 
-loadMaps().then(tick);
+loadIcons().then(loadMaps).then(tick);
 loadServerSettings();
 setInterval(tick, 5000);
 document.addEventListener("visibilitychange", tick);

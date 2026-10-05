@@ -51,6 +51,9 @@ panel/                  panel image
     server_settings.py  server settings (server.env)
     static/             HTML, CSS, JS (no build step)
   requirements.txt      pinned, hashed dependencies for the image
+tools/
+  import_map_icons.py   standalone (stdlib only) importer for map pictures:
+                        reads .pak files, decodes DXT1/DXT5, writes PNG, uploads
 tests/                  pytest suite (fakes for RCON and A2S, entrypoint harness)
 compose.truenas.yaml    install file for TrueNAS
 compose.local-build.yaml builds both images locally
@@ -92,6 +95,17 @@ After changing panel dependencies, regenerate the hashed requirements:
 ```bash
 uv export --no-dev --no-emit-project -o panel/requirements.txt
 ```
+
+## Map pictures
+
+The server's paks have no usable textures (servers are cooked without them),
+so pictures come from a game client. `tools/import_map_icons.py` reads each
+map's metadata asset (`Maps/<Map>/Metadata/BP_*Metadata`), which names its
+levels and its thumbnail (`UI/UIAssets/Menu/Thumbnails/<Map>Thumb`). Levels
+listed in several metadata assets take the most specific one (DIH and Legacy
+overrides); unlisted levels match a thumbnail by name, then by map folder.
+The 512x264 thumbnails are halved and uploaded as PNG with a manifest to
+`PUT /api/map-icons/<file>` and `PUT /api/map-icons`.
 
 ## Useful facts about Mordhau's RCON
 

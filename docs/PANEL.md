@@ -36,6 +36,32 @@ the list of maps from the installed server, so it is always complete.
 Maps from mods are not in the list. Open **Other map name (mods)** and type
 the map name instead.
 
+## Map pictures
+
+The map buttons and the rotation list can show Mordhau's official map
+pictures. They are Triternion's artwork, so this project does not include
+them: you import them once from your own copy of the game.
+
+On a computer with Mordhau installed (Steam or Epic) and Python 3:
+
+1. Download [`tools/import_map_icons.py`](../tools/import_map_icons.py)
+   (open it on GitHub, then **Download raw file**).
+2. In a terminal, in the folder where you saved it, run (with your panel's
+   address):
+
+   ```bash
+   python3 import_map_icons.py --panel http://192.168.1.50:37080
+   ```
+
+   On Windows, use `py` instead of `python3`.
+3. Type your panel password when asked. After a few seconds it says
+   **Uploaded**. Reload the panel.
+
+The tool finds the game in the usual Steam, Heroic and Epic folders. If it
+does not, add `--game "<your Mordhau folder>"`. Run it again after a Mordhau
+update that adds maps. Maps without a picture of their own show the game's
+default picture, like in the game's menu.
+
 ## Players
 
 Refreshes every 5 seconds while the page is open. Admins have an **admin**

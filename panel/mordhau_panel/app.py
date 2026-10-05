@@ -24,6 +24,7 @@ from .commands import (
     player_command,
     say_command,
 )
+from .icons import MAX_ICON_BYTES, IconError, MapIconStore
 from .maps import MapCatalog
 from .rcon import RconAuthError, RconClient, RconError
 from .server_settings import ServerSettingsError, ServerSettingsStore, validate_changes
@@ -149,6 +150,7 @@ def create_app(config: Config) -> FastAPI:
     catalog = MapCatalog(config.data_dir / "server" / "Mordhau" / "Content" / "Paks")
     store = SettingsStore(panel_dir)
     server_store = ServerSettingsStore(panel_dir)
+    icon_store = MapIconStore(panel_dir / "map-icons")
     auth = PanelAuth(panel_dir, config.panel_password)
     # A fresh code each start, shown only in the container log.
     setup_code = new_setup_code() if auth.needs_setup else None
@@ -337,6 +339,42 @@ def create_app(config: Config) -> FastAPI:
     @api.post("/match/extend")
     def extend_match(body: ExtendMatchRequest):
         return {"output": run_rcon(build(extend_match_command, body.seconds))}
+
+    @api.get("/map-icons")
+    def get_map_icons():
+        return icon_store.manifest()
+
+    @api.get("/map-icons/{name}")
+    def get_map_icon(name: str):
+        path = icon_store.icon_path(name)
+        if path is None:
+            raise HTTPException(404, "No such picture")
+        # URLs carry ?v=<manifest version>, so a picture never changes under one URL.
+        return FileResponse(path, media_type="image/png",
+                            headers={"Cache-Control": "private, max-age=31536000, immutable"})
+
+    @api.put("/map-icons/{name}")
+    async def put_map_icon(name: str, request: Request):
+        if int(request.headers.get("content-length") or 0) > MAX_ICON_BYTES:
+            raise HTTPException(413, "Picture is too large")
+        try:
+            icon_store.save_icon(name, await request.body())
+        except IconError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return {"ok": True}
+
+    @api.put("/map-icons")
+    def put_map_icon_manifest(manifest: dict):
+        try:
+            icon_store.save_manifest(manifest)
+        except IconError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return icon_store.manifest()
+
+    @api.delete("/map-icons")
+    def delete_map_icons():
+        icon_store.clear()
+        return icon_store.manifest()
 
     @api.get("/server-settings")
     def get_server_settings():

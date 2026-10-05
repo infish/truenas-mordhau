@@ -73,6 +73,7 @@ Everything lives in the dataset you mounted at `/data`:
 | `panel/panel-auth.env` | Panel password **hash** and session key. |
 | `panel/rcon.env` | Generated RCON password, shared by both containers. |
 | `panel/effective.env` | What the server last started with (no passwords). |
+| `panel/map-icons/` | Map pictures imported with `tools/import_map_icons.py`, and `manifest.json` saying which map uses which picture. |
 
 `Game.ini` is updated, not overwritten: the server only rewrites the settings
 it manages (`ServerName`, `ServerPassword`, `AdminPassword`, `MaxSlots`,

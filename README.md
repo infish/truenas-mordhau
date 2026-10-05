@@ -11,6 +11,8 @@ including your phone.
 - **A Mordhau dedicated server** that installs and updates itself from Steam.
 - **A web panel** on port 37080:
   - **Change the map now.** Pick a mode and a map; players stay connected.
+    Shows the official map pictures if you
+    [import them from your game](docs/PANEL.md#map-pictures).
   - **Players.** See who is online, make friends admin, move teams, mute,
     kick, ban, rename, add bots, message everyone, extend the match.
   - **Rotation & startup map.** Any number of maps, in any order.

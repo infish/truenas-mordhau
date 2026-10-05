@@ -115,6 +115,8 @@ days on each device.
 - **Learn the panel:** see [Using the panel](PANEL.md).
 - **Choose your maps:** in the panel, **Rotation & startup map**, then
   **Save & restart**.
+- **Optional, map pictures:** import the official map pictures from your
+  game, see [Map pictures](PANEL.md#map-pictures).
 
 ## Updating
 
