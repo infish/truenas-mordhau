@@ -93,6 +93,25 @@ main {
   gap: 16px;
 }
 
+/* Narrow screens: one column, columns dissolve and "order" sets the sequence. */
+.column { display: contents; }
+.card-map { order: 1; }
+.card-players { order: 2; }
+.card-rotation { order: 3; }
+.card-settings { order: 4; }
+.card-console { order: 5; }
+
+/* Wide screens: maps and rotation on the left, players and settings on the right. */
+@media (min-width: 1100px) {
+  main {
+    max-width: 1640px;
+    grid-template-columns: minmax(0, 3fr) minmax(380px, 2fr);
+    align-items: start;
+  }
+  .column { display: grid; gap: 16px; min-width: 0; }
+  .column .card { order: 0; }
+}
+
 .card {
   background: var(--surface);
   border: 1px solid var(--border);

@@ -21,181 +21,185 @@
   <main>
     <div id="notice" class="notice" hidden></div>
 
-    <section class="card">
-      <div class="card-head">
-        <h2>Change map now</h2>
-        <span class="hint">Switches immediately over RCON. Players stay connected.</span>
-      </div>
-      <div id="rcon-warning" class="warning" hidden>
-        RCON is not configured. Set <code>RCON_PASSWORD</code> on both the server and panel containers.
-      </div>
-      <div id="modes" class="chips" role="tablist"></div>
-      <div id="map-grid" class="map-grid"></div>
-      <details class="custom-map">
-        <summary>Other map name (mods)</summary>
-        <input id="custom-map" type="text" placeholder="e.g. FFA_MyModMap" autocomplete="off" spellcheck="false">
-      </details>
-      <div class="actions sticky-action">
-        <button id="change-btn" class="primary" disabled>Pick a map</button>
-      </div>
-    </section>
-
-    <section class="card" id="players-card">
-      <div class="card-head">
-        <h2>Players</h2>
-        <span id="players-summary" class="hint">Loading…</span>
-      </div>
-      <ul id="player-list" class="player-list"></ul>
-      <p class="hint">Admins can type <code>ParryThis</code> in their in-game console (<kbd>~</kbd>) to get the gun.</p>
-
-      <div class="tools">
-        <div class="tool">
-          <span class="tool-label">Bots</span>
-          <div class="tool-row">
-            <input id="bot-amount" type="number" min="1" max="64" value="2" aria-label="Number of bots">
-            <select id="bot-team" aria-label="Bot team">
-              <option value="">Any team</option>
-              <option value="0">Team 0</option>
-              <option value="1">Team 1</option>
-            </select>
-            <button id="bots-add">Add</button>
-            <button id="bots-remove">Remove</button>
-          </div>
+    <div class="column column-main">
+      <section class="card card-map">
+        <div class="card-head">
+          <h2>Change map now</h2>
+          <span class="hint">Switches immediately over RCON. Players stay connected.</span>
         </div>
-
-        <form id="say-form" class="tool">
-          <span class="tool-label">Message everyone</span>
-          <div class="tool-row">
-            <input id="say-input" type="text" maxlength="200" placeholder="Shown to all players" autocomplete="off">
-            <button class="primary">Send</button>
-          </div>
-        </form>
-
-        <div class="tool">
-          <span class="tool-label">Match time</span>
-          <div class="tool-row">
-            <button id="match-check">Check</button>
-            <button data-extend="300">+5 min</button>
-            <button data-extend="600">+10 min</button>
-            <span id="match-output" class="hint"></span>
-          </div>
+        <div id="rcon-warning" class="warning" hidden>
+          RCON is not configured. Set <code>RCON_PASSWORD</code> on both the server and panel containers.
         </div>
-
-        <details id="bans" class="tool">
-          <summary class="tool-label">Ban list</summary>
-          <ul id="ban-list" class="entry-list"></ul>
+        <div id="modes" class="chips" role="tablist"></div>
+        <div id="map-grid" class="map-grid"></div>
+        <details class="custom-map">
+          <summary>Other map name (mods)</summary>
+          <input id="custom-map" type="text" placeholder="e.g. FFA_MyModMap" autocomplete="off" spellcheck="false">
         </details>
-
-        <details id="mutes" class="tool">
-          <summary class="tool-label">Mute list</summary>
-          <ul id="mute-list" class="entry-list"></ul>
-        </details>
-      </div>
-    </section>
-
-    <section class="card">
-      <div class="card-head">
-        <h2>Rotation &amp; startup map</h2>
-        <span class="hint">Takes effect after a server restart (about a minute; players are disconnected).</span>
-      </div>
-      <p id="running-with" class="running-with"></p>
-      <div id="restart-pending" class="warning" hidden>Restart requested. Waiting for the server to come back…</div>
-
-      <label class="field">
-        <span>Startup map</span>
-        <select id="default-map"></select>
-      </label>
-
-      <div class="field">
-        <span>Rotation</span>
-        <ol id="rotation" class="rotation"></ol>
-        <div class="add-row">
-          <select id="add-mode" aria-label="Mode"></select>
-          <select id="add-map" aria-label="Map"></select>
-          <button id="add-btn">Add</button>
+        <div class="actions sticky-action">
+          <button id="change-btn" class="primary" disabled>Pick a map</button>
         </div>
-      </div>
+      </section>
 
-      <div class="actions">
-        <button id="reset-btn" class="ghost" title="Delete panel settings and use the TrueNAS app values again">Use app defaults</button>
-        <button id="save-btn">Save</button>
-        <button id="save-restart-btn" class="primary">Save &amp; restart</button>
-      </div>
-    </section>
+      <section class="card card-rotation">
+        <div class="card-head">
+          <h2>Rotation &amp; startup map</h2>
+          <span class="hint">Takes effect after a server restart (about a minute; players are disconnected).</span>
+        </div>
+        <p id="running-with" class="running-with"></p>
+        <div id="restart-pending" class="warning" hidden>Restart requested. Waiting for the server to come back…</div>
 
-    <section class="card">
-      <div class="card-head">
-        <h2>Server settings</h2>
-        <span class="hint">Saved settings apply after a server restart. Leave a password field empty to keep it.</span>
-      </div>
-      <form id="server-settings-form" class="settings-grid">
         <label class="field">
-          <span>Server name</span>
-          <input id="ss-name" type="text" maxlength="64" required>
+          <span>Startup map</span>
+          <select id="default-map"></select>
         </label>
-        <label class="field">
-          <span>Max players</span>
-          <input id="ss-max-players" type="number" min="1" max="100" required>
-        </label>
-        <div class="field">
-          <span>Join password</span>
-          <input id="ss-server-password" type="text" maxlength="64" autocomplete="off" aria-label="Join password">
-          <label class="check"><input id="ss-clear-server-password" type="checkbox"><span>No join password (open server)</span></label>
-        </div>
-        <div class="field">
-          <span>Admin password</span>
-          <input id="ss-admin-password" type="text" maxlength="64" autocomplete="off" aria-label="Admin password">
-          <label class="check"><input id="ss-clear-admin-password" type="checkbox"><span>No admin password</span></label>
-        </div>
-        <label class="check wide">
-          <input id="ss-advertise" type="checkbox">
-          <span>List the server publicly in the Mordhau server browser</span>
-        </label>
-        <div class="actions wide">
-          <button type="button" id="ss-save">Save</button>
-          <button type="button" id="ss-save-restart" class="primary">Save &amp; restart</button>
-        </div>
-      </form>
 
-      <details class="tool">
-        <summary class="tool-label">Change panel password</summary>
-        <p id="pp-env-note" class="hint" hidden>The panel password is set by <code>PANEL_PASSWORD</code> in the TrueNAS app config. Change it there, or remove it to manage the password here.</p>
-        <form id="panel-password-form" class="settings-grid">
-          <input type="text" name="username" value="admin" autocomplete="username" hidden>
-          <label class="field wide">
-            <span>Current password</span>
-            <input id="pp-current" type="password" autocomplete="current-password" required>
+        <div class="field">
+          <span>Rotation</span>
+          <ol id="rotation" class="rotation"></ol>
+          <div class="add-row">
+            <select id="add-mode" aria-label="Mode"></select>
+            <select id="add-map" aria-label="Map"></select>
+            <button id="add-btn">Add</button>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="reset-btn" class="ghost" title="Delete panel settings and use the TrueNAS app values again">Use app defaults</button>
+          <button id="save-btn">Save</button>
+          <button id="save-restart-btn" class="primary">Save &amp; restart</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="column column-side">
+      <section class="card card-players" id="players-card">
+        <div class="card-head">
+          <h2>Players</h2>
+          <span id="players-summary" class="hint">Loading…</span>
+        </div>
+        <ul id="player-list" class="player-list"></ul>
+        <p class="hint">Admins can type <code>ParryThis</code> in their in-game console (<kbd>~</kbd>) to get the gun.</p>
+
+        <div class="tools">
+          <div class="tool">
+            <span class="tool-label">Bots</span>
+            <div class="tool-row">
+              <input id="bot-amount" type="number" min="1" max="64" value="2" aria-label="Number of bots">
+              <select id="bot-team" aria-label="Bot team">
+                <option value="">Any team</option>
+                <option value="0">Team 0</option>
+                <option value="1">Team 1</option>
+              </select>
+              <button id="bots-add">Add</button>
+              <button id="bots-remove">Remove</button>
+            </div>
+          </div>
+
+          <form id="say-form" class="tool">
+            <span class="tool-label">Message everyone</span>
+            <div class="tool-row">
+              <input id="say-input" type="text" maxlength="200" placeholder="Shown to all players" autocomplete="off">
+              <button class="primary">Send</button>
+            </div>
+          </form>
+
+          <div class="tool">
+            <span class="tool-label">Match time</span>
+            <div class="tool-row">
+              <button id="match-check">Check</button>
+              <button data-extend="300">+5 min</button>
+              <button data-extend="600">+10 min</button>
+              <span id="match-output" class="hint"></span>
+            </div>
+          </div>
+
+          <details id="bans" class="tool">
+            <summary class="tool-label">Ban list</summary>
+            <ul id="ban-list" class="entry-list"></ul>
+          </details>
+
+          <details id="mutes" class="tool">
+            <summary class="tool-label">Mute list</summary>
+            <ul id="mute-list" class="entry-list"></ul>
+          </details>
+        </div>
+      </section>
+
+      <section class="card card-settings">
+        <div class="card-head">
+          <h2>Server settings</h2>
+          <span class="hint">Saved settings apply after a server restart. Leave a password field empty to keep it.</span>
+        </div>
+        <form id="server-settings-form" class="settings-grid">
+          <label class="field">
+            <span>Server name</span>
+            <input id="ss-name" type="text" maxlength="64" required>
           </label>
           <label class="field">
-            <span>New password</span>
-            <input id="pp-new" type="password" minlength="8" autocomplete="new-password" required>
+            <span>Max players</span>
+            <input id="ss-max-players" type="number" min="1" max="100" required>
           </label>
-          <label class="field">
-            <span>Repeat new password</span>
-            <input id="pp-new-2" type="password" minlength="8" autocomplete="new-password" required>
+          <div class="field">
+            <span>Join password</span>
+            <input id="ss-server-password" type="text" maxlength="64" autocomplete="off" aria-label="Join password">
+            <label class="check"><input id="ss-clear-server-password" type="checkbox"><span>No join password (open server)</span></label>
+          </div>
+          <div class="field">
+            <span>Admin password</span>
+            <input id="ss-admin-password" type="text" maxlength="64" autocomplete="off" aria-label="Admin password">
+            <label class="check"><input id="ss-clear-admin-password" type="checkbox"><span>No admin password</span></label>
+          </div>
+          <label class="check wide">
+            <input id="ss-advertise" type="checkbox">
+            <span>List the server publicly in the Mordhau server browser</span>
           </label>
           <div class="actions wide">
-            <button class="primary">Change password</button>
+            <button type="button" id="ss-save">Save</button>
+            <button type="button" id="ss-save-restart" class="primary">Save &amp; restart</button>
           </div>
         </form>
-      </details>
-    </section>
 
-    <section class="card">
-      <div class="card-head">
-        <h2>Console</h2>
-        <span class="hint">Sends raw RCON commands.</span>
-      </div>
-      <div class="chips">
-        <button class="chip" data-command="help">help</button>
-        <button class="chip" data-command="playerlist">playerlist</button>
-      </div>
-      <form id="console-form" class="console-form">
-        <input id="console-input" type="text" placeholder="Command" autocomplete="off" spellcheck="false">
-        <button class="primary">Send</button>
-      </form>
-      <pre id="console-output" class="console-output" aria-live="polite"></pre>
-    </section>
+        <details class="tool">
+          <summary class="tool-label">Change panel password</summary>
+          <p id="pp-env-note" class="hint" hidden>The panel password is set by <code>PANEL_PASSWORD</code> in the TrueNAS app config. Change it there, or remove it to manage the password here.</p>
+          <form id="panel-password-form" class="settings-grid">
+            <input type="text" name="username" value="admin" autocomplete="username" hidden>
+            <label class="field wide">
+              <span>Current password</span>
+              <input id="pp-current" type="password" autocomplete="current-password" required>
+            </label>
+            <label class="field">
+              <span>New password</span>
+              <input id="pp-new" type="password" minlength="8" autocomplete="new-password" required>
+            </label>
+            <label class="field">
+              <span>Repeat new password</span>
+              <input id="pp-new-2" type="password" minlength="8" autocomplete="new-password" required>
+            </label>
+            <div class="actions wide">
+              <button class="primary">Change password</button>
+            </div>
+          </form>
+        </details>
+      </section>
+
+      <section class="card card-console">
+        <div class="card-head">
+          <h2>Console</h2>
+          <span class="hint">Sends raw RCON commands.</span>
+        </div>
+        <div class="chips">
+          <button class="chip" data-command="help">help</button>
+          <button class="chip" data-command="playerlist">playerlist</button>
+        </div>
+        <form id="console-form" class="console-form">
+          <input id="console-input" type="text" placeholder="Command" autocomplete="off" spellcheck="false">
+          <button class="primary">Send</button>
+        </form>
+        <pre id="console-output" class="console-output" aria-live="polite"></pre>
+      </section>
+    </div>
   </main>
 
   <script src="/static/app.js"></script>
