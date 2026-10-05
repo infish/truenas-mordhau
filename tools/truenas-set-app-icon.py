@@ -76,8 +76,14 @@ def main() -> None:
         raise SystemExit("No Mordhau app found. Pass the app name, e.g. sudo python3 truenas-set-app-icon.py mordhau")
     for app in apps:
         set_icon(app)
-    # Rebuild TrueNAS's combined app list from the per-app files.
-    subprocess.run(["midclt", "call", "-j", "app.metadata_generate"], check=True, stdout=subprocess.DEVNULL)
+    # Rebuild TrueNAS's combined app list from the per-app files. The private
+    # job is app.metadata.generate up to 25.10 and app.metadata_generate later.
+    for method in ("app.metadata.generate", "app.metadata_generate"):
+        result = subprocess.run(["midclt", "call", "-j", method], capture_output=True, text=True)
+        if result.returncode == 0:
+            break
+    else:
+        raise SystemExit(f"TrueNAS did not rebuild its app list: {result.stderr.strip() or result.stdout.strip()}")
     for app in apps:
         result = json.loads(midclt("app.query", json.dumps([["name", "=", app]]), '{"select": ["metadata"]}'))
         icon = result[0]["metadata"].get("icon") if result else None
