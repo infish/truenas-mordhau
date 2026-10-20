@@ -4,7 +4,7 @@ Run your own **Mordhau dedicated server** on TrueNAS, with a simple **web
 panel** to change maps, manage players and edit settings from any browser,
 including your phone.
 
-![The panel](docs/images/panel.jpg)
+![The panel on a wide screen](docs/images/panel.png)
 
 ## What you get
 
@@ -33,8 +33,12 @@ The short version:
 2. Apps → Discover Apps → ⋮ → **Install via YAML**, paste
    [`compose.truenas.yaml`](compose.truenas.yaml), change the dataset path.
 3. Copy the **setup code** from the panel's log.
-4. Open `http://<your-truenas-ip>:37080`, enter the code, pick your
-   passwords and server name. Done.
+4. Click **Web UI** on the app (or open `http://<your-truenas-ip>:37080`),
+   enter the code, pick your passwords and server name. Done.
+
+Optional extras: the [official map pictures](docs/PANEL.md#map-pictures) from
+your own copy of the game, and the
+[Mordhau icon](docs/INSTALL.md#next-steps) for the app in TrueNAS.
 
 ### What you need
 

@@ -1,7 +1,13 @@
 # Using the panel
 
-Open `http://<your-truenas-ip>:37080` and log in with your panel password.
-The panel works the same on a phone, a laptop or a desktop.
+Open the panel with the **Web UI** button on the app in TrueNAS (or
+`http://<your-truenas-ip>:37080`) and log in with your panel password.
+
+On a wide screen the panel uses two columns: maps and rotation on the left,
+players and settings on the right (see the [README](../README.md)). On a phone
+it is one column:
+
+<img src="images/panel-phone.png" alt="The panel on a phone" width="300">
 
 The bar at the top shows the server's state: a **green dot** with the server
 name, the current map and the player count means it is running; a **red dot**

@@ -89,7 +89,7 @@ on your network.
    `http://192.168.1.50:37080`.)
 2. Fill in the setup screen:
 
-   ![Setup screen](images/setup.jpg)
+   ![Setup screen](images/setup.png)
 
    | Field | What to put |
    | --- | --- |
